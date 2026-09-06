@@ -1,3 +1,16 @@
+测试内容：RAG 检索测试
+PDF
+↓
+Embedding
+↓
+FAISS
+↓
+Search
+↓
+Evidence返回
+
+
+
 User> OpenAI 在构建 Agent 时强调哪些核心组件？
 [Router] task_type=knowledge_query, complexity=simple
 [Retrieval] query=OpenAI 在构建 Agent 时强调哪些核心组件？
