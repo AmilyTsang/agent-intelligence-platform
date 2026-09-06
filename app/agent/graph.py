@@ -1,11 +1,23 @@
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import StateGraph, START, END
 
 from app.agent.state import AgentState
 
-from app.agent.nodes.answer import answer_node
-from app.agent.nodes.planner import planner_node
-from app.agent.nodes.retrieval import retrieval_node
-from app.agent.nodes.router import router_node
+from app.agent.nodes.router import (
+    router_node,
+    route_by_complexity,
+)
+
+from app.agent.nodes.planner import (
+    planner_node,
+)
+
+from app.agent.nodes.retrieval import (
+    retrieval_node,
+)
+
+from app.agent.nodes.answer import (
+    answer_node,
+)
 
 from app.agent.nodes.prepare_messages import (
     prepare_messages_node,
@@ -27,167 +39,173 @@ from app.agent.nodes.finalize import (
     finalize_node,
 )
 
-
-def route_after_router(
-    state: AgentState,
-) -> str:
-    """
-    简单任务走传统 RAG。
-    复杂任务进入 Agent Tool Loop。
-    """
-
-    if state.get(
-        "complexity"
-    ) == "complex":
-
-        return "planner"
-
-    return "retrieval"
+from app.agent.nodes.force_finalize import (
+    force_finalize_node,
+)
 
 
 def build_graph():
+    """
+    构建 Agent Intelligence Platform 的 LangGraph 工作流。
 
-    builder = StateGraph(
+    Simple Task:
+        Router
+        → Retrieval
+        → Answer
+        → END
+
+    Complex Task:
+        Router
+        → Planner
+        → Prepare Messages
+        → Agent Executor
+        → Tool Loop
+        → Finalize
+        → END
+
+    Tool Loop 达到最大次数时:
+        Agent Executor
+        → Force Finalize
+        → END
+    """
+
+    workflow = StateGraph(
         AgentState
     )
 
+    # ========================
+    # Nodes
+    # ========================
 
-    # ======================
-    # 原有节点
-    # ======================
-
-    builder.add_node(
+    workflow.add_node(
         "router",
         router_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "planner",
         planner_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "retrieval",
         retrieval_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "answer",
         answer_node,
     )
 
-
-    # ======================
-    # 新增 Tool Agent 节点
-    # ======================
-
-    builder.add_node(
+    workflow.add_node(
         "prepare_messages",
         prepare_messages_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "agent_executor",
         agent_executor_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "tool",
         tool_node,
     )
 
-    builder.add_node(
+    workflow.add_node(
         "finalize",
         finalize_node,
     )
 
+    workflow.add_node(
+        "force_finalize",
+        force_finalize_node,
+    )
 
-    # ======================
-    # Entry
-    # ======================
+    # ========================
+    # START
+    # ========================
 
-    builder.add_edge(
+    workflow.add_edge(
         START,
         "router",
     )
 
+    # ========================
+    # Router
+    # ========================
 
-    # ======================
-    # Router 分流
-    # ======================
-
-    builder.add_conditional_edges(
+    workflow.add_conditional_edges(
         "router",
-        route_after_router,
+        route_by_complexity,
         {
-            "planner": "planner",
-            "retrieval": "retrieval",
+            "simple": "retrieval",
+            "complex": "planner",
         },
     )
 
+    # ========================
+    # Simple Flow
+    # ========================
 
-    # ======================
-    # Simple RAG Path
-    # ======================
-
-    builder.add_edge(
+    workflow.add_edge(
         "retrieval",
         "answer",
     )
 
-    builder.add_edge(
+    workflow.add_edge(
         "answer",
         END,
     )
 
+    # ========================
+    # Complex Flow
+    # ========================
 
-    # ======================
-    # Complex Agent Path
-    # ======================
-
-    builder.add_edge(
+    workflow.add_edge(
         "planner",
         "prepare_messages",
     )
 
-
-    builder.add_edge(
+    workflow.add_edge(
         "prepare_messages",
         "agent_executor",
     )
 
+    # ========================
+    # Agent Tool Routing
+    # ========================
 
-    # Agent 判断是否调用 Tool
-
-    builder.add_conditional_edges(
+    workflow.add_conditional_edges(
         "agent_executor",
         route_after_agent,
         {
             "tools": "tool",
             "finalize": "finalize",
+            "force_finalize": "force_finalize",
         },
     )
 
-
-    # Tool 执行完成后回 Agent
-
-    builder.add_edge(
+    # Tool 执行后重新回到 Agent
+    workflow.add_edge(
         "tool",
         "agent_executor",
     )
 
-
-    # 最终回答
-
-    builder.add_edge(
+    # 正常结束
+    workflow.add_edge(
         "finalize",
         END,
     )
 
+    # 达到 Tool Loop 上限后强制结束
+    workflow.add_edge(
+        "force_finalize",
+        END,
+    )
 
-    graph = builder.compile()
-
-    return graph
+    return workflow.compile()
 
 
 research_graph = build_graph()
+graph = research_graph

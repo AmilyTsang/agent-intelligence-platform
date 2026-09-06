@@ -19,22 +19,61 @@ ComplexityType = Literal[
 ]
 
 
-class AgentState(
-    MessagesState,
-    total=False,
-):
-    # 用户原始问题
+class AgentState(MessagesState, total=False):
+    """
+    Agent Intelligence Platform 全局状态。
+
+    MessagesState 自带：
+        messages
+
+    自定义字段：
+        query:
+            用户原始问题
+
+        task_type:
+            Router 判断的任务类型
+
+        complexity:
+            simple / complex
+
+        plan:
+            Planner 生成的研究计划
+
+        documents:
+            RAG 检索得到的文档
+
+        answer:
+            最终回答
+
+        tool_rounds:
+            已产生的 Tool Calling 轮数
+
+            注意：
+            同一个 AIMessage 中即使包含多个 Tool Call，
+            也只算 1 个 Tool Round。
+
+            例如：
+
+            company_search(OpenAI)
+            company_search(Google)
+
+            同时出现时：
+
+            tool_rounds += 1
+
+            而不是 += 2
+    """
+
     query: str
 
-    # Router 结果
     task_type: TaskType
+
     complexity: ComplexityType
 
-    # Planner 结果
     plan: list[dict]
 
-    # 原有简单 RAG 链路使用
     documents: list[Document]
 
-    # 最终答案
     answer: str
+
+    tool_rounds: int

@@ -110,3 +110,26 @@ def router_node(
         "task_type": result.task_type,
         "complexity": result.complexity,
     }
+
+
+
+def route_by_complexity(state: AgentState) -> str:
+    """
+    根据 Router 输出的 complexity 决定后续流程。
+
+    simple:
+        → retrieval
+
+    complex:
+        → planner
+    """
+
+    complexity = state.get(
+        "complexity",
+        "simple",
+    )
+
+    if complexity == "complex":
+        return "complex"
+
+    return "simple"
