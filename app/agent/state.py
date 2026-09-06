@@ -77,3 +77,7 @@ class AgentState(MessagesState, total=False):
     answer: str
 
     tool_rounds: int
+    
+    evidence_sufficient: bool
+    evidence_score: float
+    evidence_gaps: list[str]

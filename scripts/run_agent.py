@@ -71,6 +71,35 @@ def main():
                 f"\nERROR: {exc}\n"
             )
 
+            print(
+                "\nEvidence Sufficient:",
+                result.get(
+                    "evidence_sufficient",
+                ),
+            )
+
+            print(
+                "Evidence Score:",
+                result.get(
+                    "evidence_score",
+                ),
+            )
+
+            print(
+                "Evidence Gaps:",
+            )
+
+            for index, gap in enumerate(
+                result.get(
+                    "evidence_gaps",
+                    [],
+                ),
+                start=1,
+            ):
+                print(
+                    f"{index}. {gap}"
+                )
+
 
 if __name__ == "__main__":
     main()
