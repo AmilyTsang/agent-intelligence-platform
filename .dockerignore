@@ -1,0 +1,21 @@
+__pycache__
+
+*.pyc
+
+.env
+
+.git
+
+.gitignore
+
+
+# frontend
+frontend/node_modules
+frontend/dist
+
+
+# runtime data
+data/documents
+data/vector_store
+
+*.log
