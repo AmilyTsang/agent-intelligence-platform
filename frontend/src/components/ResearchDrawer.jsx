@@ -3,7 +3,6 @@ function ResearchDrawer({
   result,
   onClose,
 }) {
-
   if (
     !open ||
     !result
@@ -11,6 +10,10 @@ function ResearchDrawer({
     return null;
   }
 
+
+  // ============================================================
+  // 数据
+  // ============================================================
 
   const evidence =
     result.evidence || {};
@@ -20,6 +23,12 @@ function ResearchDrawer({
 
   const tracking =
     result.evidence_tracking || {};
+
+  const tokenUsage =
+    result.token_usage || {};
+
+  const timing =
+    result.timing || {};
 
 
   const score =
@@ -32,7 +41,9 @@ function ResearchDrawer({
 
   return (
     <>
-      {/* Overlay */}
+      {/* ======================================================
+          遮罩层
+      ======================================================= */}
 
       <div
         className="drawer-overlay"
@@ -40,22 +51,26 @@ function ResearchDrawer({
       />
 
 
-      {/* Drawer */}
+      {/* ======================================================
+          右侧详情面板
+      ======================================================= */}
 
       <aside className="research-drawer">
 
-        {/* Header */}
+        {/* ====================================================
+            顶部
+        ===================================================== */}
 
         <div className="drawer-header">
 
           <div>
 
             <span className="drawer-eyebrow">
-              RESEARCH TRACE
+              研究执行轨迹
             </span>
 
             <h2>
-              Research details
+              研究详情
             </h2>
 
           </div>
@@ -65,6 +80,7 @@ function ResearchDrawer({
             type="button"
             className="drawer-close"
             onClick={onClose}
+            aria-label="关闭研究详情"
           >
             ×
           </button>
@@ -72,51 +88,56 @@ function ResearchDrawer({
         </div>
 
 
+        {/* ====================================================
+            内容区域
+        ===================================================== */}
+
         <div className="drawer-content">
 
-          {/* ================================================
-              Overview
-          ================================================= */}
+          {/* ==================================================
+              概览
+          =================================================== */}
 
           <section className="drawer-section">
 
             <h3>
-              Overview
+              概览
             </h3>
 
             <div className="drawer-stats">
 
               <DrawerStat
-                label="Task"
+                label="任务类型"
                 value={
-                  formatLabel(
-                    result.task_type ||
-                      "Unknown"
+                  formatTaskType(
+                    result.task_type
                   )
                 }
               />
 
+
               <DrawerStat
-                label="Complexity"
+                label="复杂度"
                 value={
-                  formatLabel(
-                    result.complexity ||
-                      "Unknown"
+                  formatComplexity(
+                    result.complexity
                   )
                 }
               />
 
+
               <DrawerStat
-                label="Evidence"
+                label="证据评分"
                 value={
                   score === null
-                    ? "N/A"
+                    ? "未评估"
                     : `${score}%`
                 }
               />
 
+
               <DrawerStat
-                label="Retries"
+                label="重试次数"
                 value={
                   retry.count ?? 0
                 }
@@ -127,16 +148,16 @@ function ResearchDrawer({
           </section>
 
 
-          {/* ================================================
-              Plan
-          ================================================= */}
+          {/* ==================================================
+              研究计划
+          =================================================== */}
 
           <section className="drawer-section">
 
             <div className="drawer-section-heading">
 
               <h3>
-                Research plan
+                研究计划
               </h3>
 
               <span>
@@ -167,7 +188,9 @@ function ResearchDrawer({
                       <div>
 
                         <code>
-                          {step.action}
+                          {formatPlanAction(
+                            step.action
+                          )}
                         </code>
 
                         <p>
@@ -183,24 +206,23 @@ function ResearchDrawer({
               </div>
             ) : (
               <p className="drawer-empty">
-                No explicit research
-                plan was required.
+                当前任务不需要生成显式研究计划。
               </p>
             )}
 
           </section>
 
 
-          {/* ================================================
-              Tool Execution
-          ================================================= */}
+          {/* ==================================================
+              工具执行
+          =================================================== */}
 
           <section className="drawer-section">
 
             <div className="drawer-section-heading">
 
               <h3>
-                Tool execution
+                工具执行
               </h3>
 
               <span>
@@ -225,7 +247,9 @@ function ResearchDrawer({
                       </span>
 
                       <span>
-                        {tool.name}
+                        {formatToolName(
+                          tool.name
+                        )}
                       </span>
 
                       <small>
@@ -239,30 +263,27 @@ function ResearchDrawer({
               </div>
             ) : (
               <p className="drawer-empty">
-                No structured tools
-                were required.
+                当前任务未执行结构化工具调用。
               </p>
             )}
 
           </section>
 
 
-          {/* ================================================
-              Evidence
-          ================================================= */}
+          {/* ==================================================
+              证据评估
+          =================================================== */}
 
           <section className="drawer-section">
 
             <h3>
-              Evidence evaluation
+              证据评估
             </h3>
 
 
             {!evidence.evaluated ? (
               <p className="drawer-empty">
-                Evidence Checker was
-                not required for this
-                task.
+                当前任务未触发证据检查器。
               </p>
             ) : (
               <>
@@ -270,7 +291,7 @@ function ResearchDrawer({
                 <div className="drawer-evidence-header">
 
                   <strong>
-                    {score}%
+                    {score ?? 0}%
                   </strong>
 
                   <span
@@ -281,8 +302,8 @@ function ResearchDrawer({
                     }
                   >
                     {evidence.sufficient
-                      ? "Sufficient"
-                      : "Insufficient"}
+                      ? "证据充分"
+                      : "证据不足"}
                   </span>
 
                 </div>
@@ -303,7 +324,7 @@ function ResearchDrawer({
                   <div className="drawer-gaps">
 
                     <h4>
-                      Evidence gaps
+                      证据缺口
                     </h4>
 
                     <ol>
@@ -330,42 +351,45 @@ function ResearchDrawer({
           </section>
 
 
-          {/* ================================================
-              Evidence Tracking
-          ================================================= */}
+          {/* ==================================================
+              证据统计
+          =================================================== */}
 
           <section className="drawer-section">
 
             <h3>
-              Evidence tracking
+              证据统计
             </h3>
 
 
             <div className="tracking-grid">
 
               <DrawerStat
-                label="Unique"
+                label="唯一证据"
                 value={
                   tracking.unique ?? 0
                 }
               />
 
+
               <DrawerStat
-                label="New"
+                label="新增证据"
                 value={
                   tracking.new ?? 0
                 }
               />
 
+
               <DrawerStat
-                label="Duplicates"
+                label="重复证据"
                 value={
                   tracking.duplicates ?? 0
                 }
               />
 
+
               <DrawerStat
-                label="Tool rounds"
+                label="工具轮次"
                 value={
                   result.tool_rounds ?? 0
                 }
@@ -376,9 +400,92 @@ function ResearchDrawer({
           </section>
 
 
-          {/* ================================================
-              Retry
-          ================================================= */}
+          {/* ==================================================
+              执行指标
+          =================================================== */}
+
+          <section className="drawer-section">
+
+            <div className="drawer-section-heading">
+
+              <h3>
+                执行指标
+              </h3>
+
+              <span>
+                实时
+              </span>
+
+            </div>
+
+
+            <div className="tracking-grid">
+
+              <DrawerStat
+                label="输入 Token"
+                value={
+                  formatNumber(
+                    tokenUsage.input_tokens
+                  )
+                }
+              />
+
+
+              <DrawerStat
+                label="输出 Token"
+                value={
+                  formatNumber(
+                    tokenUsage.output_tokens
+                  )
+                }
+              />
+
+
+              <DrawerStat
+                label="总 Token"
+                value={
+                  formatNumber(
+                    tokenUsage.total_tokens
+                  )
+                }
+              />
+
+
+              <DrawerStat
+                label="模型调用次数"
+                value={
+                  tokenUsage.llm_calls ?? 0
+                }
+              />
+
+
+              <DrawerStat
+                label="总执行时间"
+                value={
+                  formatDuration(
+                    timing.total_seconds
+                  )
+                }
+              />
+
+
+              <DrawerStat
+                label="执行毫秒"
+                value={
+                  formatMilliseconds(
+                    timing.total_ms
+                  )
+                }
+              />
+
+            </div>
+
+          </section>
+
+
+          {/* ==================================================
+              证据驱动重试
+          =================================================== */}
 
           {retry.count > 0 && (
             <section className="drawer-section">
@@ -386,7 +493,7 @@ function ResearchDrawer({
               <div className="drawer-section-heading">
 
                 <h3>
-                  Evidence-driven retry
+                  证据驱动重试
                 </h3>
 
                 <span>
@@ -403,37 +510,44 @@ function ResearchDrawer({
               )}
 
 
-              <div className="drawer-retry-list">
+              {retry.queries?.length > 0 ? (
+                <div className="drawer-retry-list">
 
-                {retry.queries?.map(
-                  (
-                    item,
-                    index
-                  ) => (
-                    <div
-                      className="drawer-retry-item"
-                      key={`${item.company}-${index}`}
-                    >
+                  {retry.queries.map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        className="drawer-retry-item"
+                        key={`${item.company}-${index}`}
+                      >
 
-                      <span>
-                        {item.company}
-                      </span>
+                        <span>
+                          {item.company}
+                        </span>
 
-                      <strong>
-                        {item.query}
-                      </strong>
+                        <strong>
+                          {item.query}
+                        </strong>
 
-                      {item.gap && (
-                        <p>
-                          {item.gap}
-                        </p>
-                      )}
+                        {item.gap && (
+                          <p>
+                            证据缺口：
+                            {item.gap}
+                          </p>
+                        )}
 
-                    </div>
-                  )
-                )}
+                      </div>
+                    )
+                  )}
 
-              </div>
+                </div>
+              ) : (
+                <p className="drawer-empty">
+                  未记录具体重试查询。
+                </p>
+              )}
 
             </section>
           )}
@@ -444,6 +558,11 @@ function ResearchDrawer({
     </>
   );
 }
+
+
+// ============================================================
+// 统计卡片
+// ============================================================
 
 
 function DrawerStat({
@@ -466,11 +585,213 @@ function DrawerStat({
 }
 
 
-function formatLabel(
+// ============================================================
+// 任务类型中文化
+// ============================================================
+
+
+function formatTaskType(
   value
 ) {
-  return String(value)
-    .replaceAll("_", " ");
+  const labels = {
+    knowledge_query:
+      "知识查询",
+
+    competitive_analysis:
+      "竞品分析",
+
+    industry_analysis:
+      "行业分析",
+
+    product_comparison:
+      "产品对比",
+
+    other:
+      "其他",
+  };
+
+
+  return (
+    labels[value] ||
+    value ||
+    "未知"
+  );
+}
+
+
+// ============================================================
+// 复杂度中文化
+// ============================================================
+
+
+function formatComplexity(
+  value
+) {
+  const labels = {
+    simple:
+      "简单",
+
+    complex:
+      "复杂",
+  };
+
+
+  return (
+    labels[value] ||
+    value ||
+    "未知"
+  );
+}
+
+
+// ============================================================
+// Plan Action 中文化
+// ============================================================
+
+
+function formatPlanAction(
+  value
+) {
+  const labels = {
+    retrieve_information:
+      "检索信息",
+
+    extract_information:
+      "提取信息",
+
+    compare_information:
+      "对比信息",
+
+    validate_information:
+      "验证信息",
+
+    synthesize_information:
+      "综合分析",
+
+    company_search:
+      "公司资料检索",
+
+    research:
+      "研究",
+  };
+
+
+  return (
+    labels[value] ||
+    String(
+      value ||
+      "研究"
+    ).replaceAll(
+      "_",
+      " "
+    )
+  );
+}
+
+
+// ============================================================
+// Tool Name 中文化
+// ============================================================
+
+
+function formatToolName(
+  value
+) {
+  const labels = {
+    company_search:
+      "公司资料检索",
+
+    extract_company_info:
+      "公司信息提取",
+
+    compare_companies:
+      "公司对比分析",
+  };
+
+
+  return (
+    labels[value] ||
+    value ||
+    "未知工具"
+  );
+}
+
+
+// ============================================================
+// 数字格式
+// ============================================================
+
+
+function formatNumber(
+  value
+) {
+  return Number(
+    value || 0
+  ).toLocaleString(
+    "zh-CN"
+  );
+}
+
+
+// ============================================================
+// 时间格式
+// ============================================================
+
+
+function formatDuration(
+  seconds
+) {
+  const value =
+    Number(
+      seconds || 0
+    );
+
+
+  if (value <= 0) {
+    return "0.0 秒";
+  }
+
+
+  if (value < 60) {
+    return `${value.toFixed(1)} 秒`;
+  }
+
+
+  const minutes =
+    Math.floor(
+      value / 60
+    );
+
+
+  const remainingSeconds =
+    Math.round(
+      value % 60
+    );
+
+
+  return `${minutes} 分 ${remainingSeconds} 秒`;
+}
+
+
+// ============================================================
+// 毫秒格式
+// ============================================================
+
+
+function formatMilliseconds(
+  milliseconds
+) {
+  const value =
+    Number(
+      milliseconds || 0
+    );
+
+
+  return `${Math.round(
+    value
+  ).toLocaleString(
+    "zh-CN"
+  )} 毫秒`;
 }
 
 

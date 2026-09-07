@@ -1,3 +1,5 @@
+from time import perf_counter
+
 import traceback
 
 from fastapi import (
@@ -15,6 +17,10 @@ from fastapi.concurrency import (
 
 from langchain_core.messages import (
     ToolMessage,
+)
+
+from langchain_community.callbacks.manager import (
+    get_openai_callback,
 )
 
 from app.agent.graph import (
@@ -119,13 +125,11 @@ def normalize_plan(
         )
 
         try:
-
             step_id = int(
                 step_id
             )
 
         except Exception:
-
             step_id = index
 
         action = str(
@@ -276,9 +280,211 @@ def extract_tool_trace(
     return trace
 
 
+# ============================================================
+# Graph Runner
+# ============================================================
+
+
+def run_research_graph(
+    query: str,
+):
+    """
+    同步执行 LangGraph。
+
+    FastAPI endpoint 会通过
+    run_in_threadpool 调用这个函数，
+    避免长时间 research_graph.invoke()
+    阻塞 FastAPI event loop。
+    """
+
+    initial_state = {
+        "query":
+            query,
+
+        "messages":
+            [],
+
+        "tool_rounds":
+            0,
+
+        "retry_count":
+            0,
+
+        "retry_queries":
+            [],
+
+        "evidence_ids":
+            [],
+
+        "new_evidence_count":
+            0,
+
+        "duplicate_evidence_count":
+            0,
+
+        "last_new_evidence_count":
+            0,
+
+        "last_duplicate_evidence_count":
+            0,
+    }
+
+    return research_graph.invoke(
+        initial_state
+    )
+
+
+# ============================================================
+# Research Metrics Runner
+# ============================================================
+
+
+def run_research_with_metrics(
+    query: str,
+):
+    """
+    执行一次完整 Research，
+    同时统计：
+
+    1. LLM Input Tokens
+    2. LLM Output Tokens
+    3. LLM Total Tokens
+    4. LLM Calls
+    5. End-to-End Execution Time
+
+    当前使用 OpenAI-compatible LangChain Callback。
+
+    如果 DeepSeek 没有把 Token Usage
+    暴露给该 Callback，
+    Token 可能暂时为 0，
+    但 Execution Time 仍然准确。
+    """
+
+    started_at = perf_counter()
+
+    with get_openai_callback() as callback:
+
+        result = run_research_graph(
+            query
+        )
+
+    elapsed_seconds = (
+        perf_counter()
+        - started_at
+    )
+
+    # ========================================================
+    # Token Usage
+    # ========================================================
+
+    token_usage = {
+        "input_tokens":
+            int(
+                callback.prompt_tokens
+                or 0
+            ),
+
+        "output_tokens":
+            int(
+                callback.completion_tokens
+                or 0
+            ),
+
+        "total_tokens":
+            int(
+                callback.total_tokens
+                or 0
+            ),
+
+        "llm_calls":
+            int(
+                callback.successful_requests
+                or 0
+            ),
+    }
+
+    # ========================================================
+    # Timing
+    # ========================================================
+
+    timing = {
+        "total_seconds":
+            round(
+                elapsed_seconds,
+                3,
+            ),
+
+        "total_ms":
+            round(
+                elapsed_seconds
+                * 1000,
+                1,
+            ),
+    }
+
+    # ========================================================
+    # Console Metrics
+    # ========================================================
+
+    print(
+        "\n"
+        "========================================"
+    )
+
+    print(
+        "[Research Metrics]"
+    )
+
+    print(
+        "========================================"
+    )
+
+    print(
+        f"Input tokens: "
+        f"{token_usage['input_tokens']}"
+    )
+
+    print(
+        f"Output tokens: "
+        f"{token_usage['output_tokens']}"
+    )
+
+    print(
+        f"Total tokens: "
+        f"{token_usage['total_tokens']}"
+    )
+
+    print(
+        f"LLM calls: "
+        f"{token_usage['llm_calls']}"
+    )
+
+    print(
+        f"Execution time: "
+        f"{timing['total_seconds']} s"
+    )
+
+    print(
+        "========================================"
+    )
+
+    return (
+        result,
+        token_usage,
+        timing,
+    )
+
+
+# ============================================================
+# Build API Response
+# ============================================================
+
+
 def build_response(
     query: str,
     state: dict,
+    token_usage: dict | None = None,
+    timing: dict | None = None,
 ) -> ResearchResponse:
     """
     将内部 AgentState 转换成
@@ -385,6 +591,30 @@ def build_response(
     )
 
     # ========================================================
+    # Token Usage Defaults
+    # ========================================================
+
+    if token_usage is None:
+
+        token_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "llm_calls": 0,
+        }
+
+    # ========================================================
+    # Timing Defaults
+    # ========================================================
+
+    if timing is None:
+
+        timing = {
+            "total_seconds": 0.0,
+            "total_ms": 0.0,
+        }
+
+    # ========================================================
     # Response
     # ========================================================
 
@@ -431,60 +661,14 @@ def build_response(
         retry=retry,
 
         evidence_tracking=tracking,
-    )
 
+        # ====================================================
+        # New Observability Metrics
+        # ====================================================
 
-# ============================================================
-# Graph Runner
-# ============================================================
+        token_usage=token_usage,
 
-
-def run_research_graph(
-    query: str,
-):
-    """
-    同步执行 LangGraph。
-
-    FastAPI endpoint 会通过
-    run_in_threadpool 调用这个函数，
-    避免长时间 research_graph.invoke()
-    阻塞 FastAPI event loop。
-    """
-
-    initial_state = {
-        "query":
-            query,
-
-        "messages":
-            [],
-
-        "tool_rounds":
-            0,
-
-        "retry_count":
-            0,
-
-        "retry_queries":
-            [],
-
-        "evidence_ids":
-            [],
-
-        "new_evidence_count":
-            0,
-
-        "duplicate_evidence_count":
-            0,
-
-        "last_new_evidence_count":
-            0,
-
-        "last_duplicate_evidence_count":
-            0,
-    }
-
-    return research_graph.invoke(
-        initial_state
+        timing=timing,
     )
 
 
@@ -557,6 +741,8 @@ async def research(
         ↓
         Evidence-driven Retry
         ↓
+        Token / Timing Metrics
+        ↓
         API Response
     """
 
@@ -593,13 +779,12 @@ async def research(
 
     try:
 
-        # LangGraph 当前为同步调用。
-        #
-        # Research 可能执行几十秒甚至更久，
-        # 所以放到 threadpool 中运行，
-        # 避免阻塞 FastAPI asyncio event loop。
-        state = await run_in_threadpool(
-            run_research_graph,
+        (
+            result,
+            token_usage,
+            timing,
+        ) = await run_in_threadpool(
+            run_research_with_metrics,
             query,
         )
 
@@ -623,13 +808,38 @@ async def research(
             ),
         ) from exc
 
+    # ========================================================
+    # Build Stable API Response
+    # ========================================================
+
     response = build_response(
         query=query,
-        state=state,
+
+        # 注意：
+        # 这里必须是 result，
+        # 不是之前未定义的 state。
+        state=result,
+
+        token_usage=token_usage,
+
+        timing=timing,
+    )
+
+    # ========================================================
+    # Console Summary
+    # ========================================================
+
+    print(
+        "\n"
+        "========================================"
     )
 
     print(
-        "\n[API] Research completed"
+        "[API] Research completed"
+    )
+
+    print(
+        "========================================"
     )
 
     print(
@@ -650,6 +860,25 @@ async def research(
     print(
         f"evidence_score="
         f"{response.evidence.score}"
+    )
+
+    print(
+        f"total_tokens="
+        f"{response.token_usage.total_tokens}"
+    )
+
+    print(
+        f"llm_calls="
+        f"{response.token_usage.llm_calls}"
+    )
+
+    print(
+        f"execution_time="
+        f"{response.timing.total_seconds}s"
+    )
+
+    print(
+        "========================================"
     )
 
     return response

@@ -17,23 +17,55 @@ const API_URL =
 
 
 function App() {
-  const [query, setQuery] = useState("");
+  // ============================================================
+  // Input
+  // ============================================================
 
-  const [messages, setMessages] =
-    useState([]);
+  const [
+    query,
+    setQuery,
+  ] = useState("");
 
-  const [error, setError] =
-    useState("");
+
+  // ============================================================
+  // Current Conversation
+  // ============================================================
+
+  const [
+    messages,
+    setMessages,
+  ] = useState([]);
+
+
+  // ============================================================
+  // Error
+  // ============================================================
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+
+  // ============================================================
+  // Drawer
+  // ============================================================
 
   const [
     drawerOpen,
     setDrawerOpen,
   ] = useState(false);
 
+
   const [
     selectedResult,
     setSelectedResult,
   ] = useState(null);
+
+
+  // ============================================================
+  // Research Sessions
+  // ============================================================
 
   /*
    * history:
@@ -49,22 +81,24 @@ function App() {
    *   }
    * ]
    */
+
   const [
     history,
     setHistory,
   ] = useState([]);
+
 
   const [
     activeSessionId,
     setActiveSessionIdState,
   ] = useState(null);
 
+
   /*
-   * 当前正在请求后端的 session。
+   * 当前正在运行 Research 的 Session ID。
    *
-   * 使用 session id，而不是简单 boolean，
-   * 这样在研究进行过程中切换 Session，
-   * 返回结果也不会错误地写到另一个会话。
+   * 当前版本仍然只允许一个 Research
+   * Request 同时运行。
    */
   const [
     pendingSessionId,
@@ -72,9 +106,41 @@ function App() {
   ] = useState(null);
 
 
+  // ============================================================
+  // Refs
+  // ============================================================
+
+  /*
+   * React State 是异步更新，
+   * 因此使用 Ref 保留当前 Session ID，
+   * 供 async fetch 回调安全判断。
+   */
   const activeSessionIdRef =
     useRef(null);
 
+
+  /*
+   * 当前 fetch 请求对应的 AbortController。
+   */
+  const abortControllerRef =
+    useRef(null);
+
+
+  /*
+   * 当前有效 Research Request ID。
+   *
+   * Stop 后会立即设置为 null。
+   *
+   * 因此即使旧请求后端继续完成，
+   * 前端也不会再接受它的结果。
+   */
+  const activeRequestIdRef =
+    useRef(null);
+
+
+  /*
+   * 自动滚动到底部。
+   */
   const conversationEndRef =
     useRef(null);
 
@@ -86,9 +152,12 @@ function App() {
   const requestInFlight =
     pendingSessionId !== null;
 
+
   const activeSessionLoading =
     pendingSessionId !== null &&
-    pendingSessionId === activeSessionId;
+    pendingSessionId ===
+      activeSessionId;
+
 
   const hasMessages =
     messages.length > 0 ||
@@ -99,14 +168,25 @@ function App() {
   // Suggested Prompts
   // ============================================================
 
-  const suggestions = useMemo(
-    () => [
-      "比较 OpenAI 和 Google 在 Agent Tools 设计上的共同点和差异。",
-      "分析 Google ADK 在企业 Agent 开发中的核心能力和限制。",
-      "OpenAI 文档中 Agent 是什么？",
-    ],
-    []
-  );
+  const suggestions =
+    useMemo(
+      () => [
+        (
+          "比较 OpenAI 和 Google "
+          + "在 Agent Tools 设计上的共同点和差异。"
+        ),
+
+        (
+          "分析 Google ADK 在企业 "
+          + "Agent 开发中的核心能力和限制。"
+        ),
+
+        (
+          "OpenAI 文档中 Agent 是什么？"
+        ),
+      ],
+      []
+    );
 
 
   // ============================================================
@@ -126,29 +206,7 @@ function App() {
 
 
   // ============================================================
-  // Auto Scroll
-  // ============================================================
-
-  useEffect(() => {
-    if (!hasMessages) {
-      return;
-    }
-
-    conversationEndRef.current?.scrollIntoView(
-      {
-        behavior: "smooth",
-        block: "end",
-      }
-    );
-  }, [
-    messages,
-    activeSessionLoading,
-    hasMessages,
-  ]);
-
-
-  // ============================================================
-  // Sort History
+  // History Sorting
   // ============================================================
 
   function sortHistory(
@@ -157,11 +215,52 @@ function App() {
     return [
       ...sessions,
     ].sort(
-      (a, b) =>
-        (b.updatedAt || 0) -
-        (a.updatedAt || 0)
+      (
+        a,
+        b
+      ) =>
+        (
+          b.updatedAt ||
+          0
+        )
+        -
+        (
+          a.updatedAt ||
+          0
+        )
     );
   }
+
+
+  // ============================================================
+  // Auto Scroll
+  // ============================================================
+
+  useEffect(
+    () => {
+      if (!hasMessages) {
+        return;
+      }
+
+
+      conversationEndRef
+        .current
+        ?.scrollIntoView(
+          {
+            behavior:
+              "smooth",
+
+            block:
+              "end",
+          }
+        );
+    },
+    [
+      messages,
+      activeSessionLoading,
+      hasMessages,
+    ]
+  );
 
 
   // ============================================================
@@ -171,10 +270,16 @@ function App() {
   async function runResearch(
     customQuery = null
   ) {
-    const finalQuery = (
-      customQuery ?? query
-    ).trim();
+    const finalQuery =
+      (
+        customQuery ??
+        query
+      ).trim();
 
+
+    // ==========================================================
+    // Validation
+    // ==========================================================
 
     if (!finalQuery) {
       return;
@@ -182,25 +287,34 @@ function App() {
 
 
     /*
-     * 当前只允许一个后端 Research Task 同时运行。
+     * 当前版本：
      *
-     * 后面如果做真正并发 Session，
-     * 再改成 session-level loading map。
+     * 一个 Research Request
+     * 运行期间不再发第二个 Request。
      */
     if (requestInFlight) {
       return;
     }
 
 
+    // ==========================================================
+    // User Message
+    // ==========================================================
+
     const userMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: finalQuery,
+      id:
+        crypto.randomUUID(),
+
+      role:
+        "user",
+
+      content:
+        finalQuery,
     };
 
 
     // ==========================================================
-    // Create / Resolve Session
+    // Resolve Session
     // ==========================================================
 
     let sessionId =
@@ -210,12 +324,13 @@ function App() {
     /*
      * 当前没有 Session：
      *
-     * 说明这是 New Research 页面。
-     * 第一次发送问题时正式创建 Session。
+     * 说明用户位于 New Research 页面。
+     * 第一次发送问题时创建新 Session。
      */
     if (!sessionId) {
       sessionId =
         crypto.randomUUID();
+
 
       setActiveSessionId(
         sessionId
@@ -223,17 +338,21 @@ function App() {
 
 
       const newSession = {
-        id: sessionId,
+        id:
+          sessionId,
 
-        title: finalQuery,
+        title:
+          finalQuery,
 
-        query: finalQuery,
+        query:
+          finalQuery,
 
         messages: [
           userMessage,
         ],
 
-        result: null,
+        result:
+          null,
 
         updatedAt:
           Date.now(),
@@ -242,15 +361,22 @@ function App() {
 
       setHistory(
         (current) =>
-          sortHistory([
-            newSession,
-            ...current,
-          ]).slice(0, 20)
+          sortHistory(
+            [
+              newSession,
+              ...current,
+            ]
+          ).slice(
+            0,
+            20
+          )
       );
     }
 
     /*
-     * 已经在某个 Session 内继续提问。
+     * 当前已经存在 Session：
+     *
+     * 将新问题追加到当前 Session。
      */
     else {
       setHistory(
@@ -265,6 +391,7 @@ function App() {
                   return session;
                 }
 
+
                 return {
                   ...session,
 
@@ -273,6 +400,7 @@ function App() {
                       session.messages ||
                       []
                     ),
+
                     userMessage,
                   ],
 
@@ -287,7 +415,7 @@ function App() {
 
 
     // ==========================================================
-    // Update Current UI
+    // Current UI
     // ==========================================================
 
     setMessages(
@@ -297,14 +425,57 @@ function App() {
       ]
     );
 
-    setQuery("");
-    setError("");
 
-    setDrawerOpen(false);
+    setQuery(
+      ""
+    );
+
+
+    setError(
+      ""
+    );
+
+
+    setDrawerOpen(
+      false
+    );
+
 
     setPendingSessionId(
       sessionId
     );
+
+
+    // ==========================================================
+    // Create Request ID
+    // ==========================================================
+
+    /*
+     * 每次 Research 使用唯一 Request ID。
+     *
+     * Stop 后 activeRequestIdRef 会被置空。
+     *
+     * 因此即使旧请求最终完成，
+     * 它也无法把结果写回 UI。
+     */
+    const requestId =
+      crypto.randomUUID();
+
+
+    activeRequestIdRef.current =
+      requestId;
+
+
+    // ==========================================================
+    // Create AbortController
+    // ==========================================================
+
+    const controller =
+      new AbortController();
+
+
+    abortControllerRef.current =
+      controller;
 
 
     // ==========================================================
@@ -316,64 +487,138 @@ function App() {
         await fetch(
           API_URL,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify(
-              {
-                query:
-                  finalQuery,
-              }
-            ),
+            body:
+              JSON.stringify(
+                {
+                  query:
+                    finalQuery,
+                }
+              ),
+
+            /*
+             * Stop 按钮将调用：
+             *
+             * controller.abort()
+             */
+            signal:
+              controller.signal,
           }
         );
 
 
+      // ========================================================
+      // HTTP Error
+      // ========================================================
+
       if (!response.ok) {
         let detail = "";
+
 
         try {
           const errorData =
             await response.json();
 
+
           detail =
             errorData?.detail ||
             "";
+
         } catch {
-          // Ignore non-JSON error.
+          /*
+           * 后端返回非 JSON Error 时忽略。
+           */
         }
 
 
         throw new Error(
           detail ||
-            `Request failed: ${response.status}`
+          (
+            "Request failed: "
+            + response.status
+          )
         );
       }
 
+
+      // ========================================================
+      // Response JSON
+      // ========================================================
 
       const data =
         await response.json();
 
 
-      const assistantMessage = {
-        id: crypto.randomUUID(),
+      // ========================================================
+      // Cancelled Request Guard
+      // ========================================================
 
-        role: "assistant",
+      /*
+       * 如果用户已经点击 Stop，
+       * activeRequestIdRef 已经变成 null。
+       *
+       * 即使后端仍然完成请求，
+       * 这里也直接丢弃结果。
+       */
+      if (
+        activeRequestIdRef.current !==
+        requestId
+      ) {
+        console.log(
+          "[Research] Ignoring cancelled result."
+        );
+
+        return;
+      }
+
+
+      // ========================================================
+      // Assistant Message
+      // ========================================================
+
+      const assistantMessage = {
+        id:
+          crypto.randomUUID(),
+
+        role:
+          "assistant",
 
         content:
           data.answer ||
-          "No research report generated.",
+          (
+            "No research report "
+            + "generated."
+          ),
 
-        result: data,
+        /*
+         * result 内包含：
+         *
+         * task_type
+         * complexity
+         * plan
+         * evidence
+         * retry
+         * evidence_tracking
+         * token_usage
+         * timing
+         *
+         * ChatMessage 和 ResearchDrawer
+         * 都直接读取这里。
+         */
+        result:
+          data,
       };
 
 
       // ========================================================
-      // Save Result into Correct Session
+      // Save Result into History Session
       // ========================================================
 
       setHistory(
@@ -397,6 +642,7 @@ function App() {
                       session.messages ||
                       []
                     ),
+
                     assistantMessage,
                   ],
 
@@ -412,12 +658,15 @@ function App() {
       );
 
 
+      // ========================================================
+      // Update Current Screen
+      // ========================================================
+
       /*
-       * 用户可能在 Research 期间
-       * 点击了 New Research 或其他 Session。
+       * 用户可能在等待期间切换到了其他 Session。
        *
-       * 只有当前正在看的仍然是这个 Session，
-       * 才把结果写到当前页面。
+       * 只有当前仍然正在查看这个 Session，
+       * 才把结果显示在当前页面。
        */
       if (
         activeSessionIdRef.current ===
@@ -430,25 +679,58 @@ function App() {
           ]
         );
 
+
         setSelectedResult(
           data
         );
       }
 
     } catch (err) {
-      console.error(err);
+      // ========================================================
+      // User Cancelled
+      // ========================================================
+
+      /*
+       * 不依赖 DOMException 类型，
+       * 直接判断 controller.signal.aborted。
+       *
+       * 这种方式在不同浏览器下更稳定。
+       */
+      if (
+        controller.signal.aborted
+      ) {
+        console.log(
+          "[Research] Cancelled by user."
+        );
+
+        return;
+      }
+
+
+      // ========================================================
+      // Real Error
+      // ========================================================
+
+      console.error(
+        err
+      );
 
 
       const errorMessage =
         err instanceof Error
           ? err.message
-          : "Research request failed.";
+          : (
+              "Research request "
+              + "failed."
+            );
 
 
       const systemMessage = {
-        id: crypto.randomUUID(),
+        id:
+          crypto.randomUUID(),
 
-        role: "error",
+        role:
+          "error",
 
         content:
           errorMessage,
@@ -480,6 +762,7 @@ function App() {
                       session.messages ||
                       []
                     ),
+
                     systemMessage,
                   ],
 
@@ -492,6 +775,10 @@ function App() {
       );
 
 
+      // ========================================================
+      // Update Current UI Error
+      // ========================================================
+
       if (
         activeSessionIdRef.current ===
         sessionId
@@ -499,6 +786,7 @@ function App() {
         setError(
           errorMessage
         );
+
 
         setMessages(
           (current) => [
@@ -509,10 +797,113 @@ function App() {
       }
 
     } finally {
-      setPendingSessionId(
-        null
-      );
+      // ========================================================
+      // Request Cleanup
+      // ========================================================
+
+      /*
+       * 非常重要：
+       *
+       * 如果用户已经 Stop，
+       * activeRequestIdRef.current 已经不是 requestId。
+       *
+       * 因此旧请求 finally
+       * 不允许修改新的 UI 状态。
+       */
+      if (
+        activeRequestIdRef.current ===
+        requestId
+      ) {
+        setPendingSessionId(
+          null
+        );
+
+
+        activeRequestIdRef.current =
+          null;
+      }
+
+
+      /*
+       * 只有这个 controller
+       * 仍然是当前 controller，
+       * 才清除 Ref。
+       */
+      if (
+        abortControllerRef.current ===
+        controller
+      ) {
+        abortControllerRef.current =
+          null;
+      }
     }
+  }
+
+
+  // ============================================================
+  // Stop Research
+  // ============================================================
+
+  function stopResearch() {
+    console.log(
+      "[Research] Stop requested."
+    );
+
+
+    const controller =
+      abortControllerRef.current;
+
+
+    // ==========================================================
+    // 1. Invalidate Current Request
+    // ==========================================================
+
+    /*
+     * 第一时间让当前 Request 失效。
+     *
+     * 之后即使服务器仍然返回结果，
+     * runResearch() 中的 requestId Guard
+     * 会直接把结果丢弃。
+     */
+    activeRequestIdRef.current =
+      null;
+
+
+    // ==========================================================
+    // 2. Abort Browser Fetch
+    // ==========================================================
+
+    if (controller) {
+      controller.abort();
+    }
+
+
+    // ==========================================================
+    // 3. Immediately Restore UI
+    // ==========================================================
+
+    /*
+     * ResearchStatus 是否显示，
+     * 取决于 pendingSessionId。
+     *
+     * 清空以后：
+     *
+     * Researching 立即消失
+     * Stop 按钮立即恢复成 Send
+     * 输入框立即恢复
+     */
+    setPendingSessionId(
+      null
+    );
+
+
+    setError(
+      ""
+    );
+
+
+    abortControllerRef.current =
+      null;
   }
 
 
@@ -527,12 +918,17 @@ function App() {
       result
     );
 
-    setDrawerOpen(true);
+
+    setDrawerOpen(
+      true
+    );
   }
 
 
   function closeResearchDetails() {
-    setDrawerOpen(false);
+    setDrawerOpen(
+      false
+    );
   }
 
 
@@ -544,23 +940,36 @@ function App() {
     /*
      * 不删除历史 Session。
      *
-     * 只是切换到一个空白的新研究页面。
+     * 只是切换到一个新的空白研究页面。
      */
     setActiveSessionId(
       null
     );
 
-    setMessages([]);
 
-    setQuery("");
+    setMessages(
+      []
+    );
 
-    setError("");
+
+    setQuery(
+      ""
+    );
+
+
+    setError(
+      ""
+    );
+
 
     setSelectedResult(
       null
     );
 
-    setDrawerOpen(false);
+
+    setDrawerOpen(
+      false
+    );
   }
 
 
@@ -575,25 +984,42 @@ function App() {
       session.id
     );
 
+
     setMessages(
-      session.messages || []
+      session.messages ||
+      []
     );
+
 
     setSelectedResult(
-      session.result || null
+      session.result ||
+      null
     );
 
-    setQuery("");
 
-    setError("");
+    setQuery(
+      ""
+    );
+
+
+    setError(
+      ""
+    );
+
 
     /*
-     * 从 Drawer 中切换 History 时，
-     * 自动关闭 Drawer。
+     * 如果此时 Drawer 正在打开，
+     * 切换 Session 时自动关闭。
      */
-    setDrawerOpen(false);
+    setDrawerOpen(
+      false
+    );
   }
 
+
+  // ============================================================
+  // Render
+  // ============================================================
 
   return (
     <div className="app-shell">
@@ -603,7 +1029,9 @@ function App() {
       ======================================================= */}
 
       <Sidebar
-        history={history}
+        history={
+          history
+        }
 
         activeSessionId={
           activeSessionId
@@ -646,7 +1074,9 @@ function App() {
 
           <div className="system-ready">
 
-            <span className="ready-dot" />
+            <span
+              className="ready-dot"
+            />
 
             <span>
               {requestInFlight
@@ -667,12 +1097,15 @@ function App() {
           className={
             hasMessages
               ? "conversation"
-              : "conversation conversation-empty"
+              : (
+                  "conversation "
+                  + "conversation-empty"
+                )
           }
         >
 
           {/* ==================================================
-              Home
+              Home / Empty State
           =================================================== */}
 
           {!hasMessages && (
@@ -682,10 +1115,12 @@ function App() {
                 AI
               </div>
 
+
               <h1>
                 What would you like
                 to research?
               </h1>
+
 
               <p>
                 Research AI products,
@@ -700,11 +1135,15 @@ function App() {
                 {suggestions.map(
                   (item) => (
                     <button
-                      key={item}
+                      key={
+                        item
+                      }
 
                       type="button"
 
-                      className="suggestion-card"
+                      className={
+                        "suggestion-card"
+                      }
 
                       disabled={
                         requestInFlight
@@ -728,7 +1167,7 @@ function App() {
 
 
           {/* ==================================================
-              Chat
+              Messages
           =================================================== */}
 
           {hasMessages && (
@@ -737,7 +1176,9 @@ function App() {
               {messages.map(
                 (message) => (
                   <ChatMessage
-                    key={message.id}
+                    key={
+                      message.id
+                    }
 
                     message={
                       message
@@ -751,10 +1192,18 @@ function App() {
               )}
 
 
+              {/* =================================================
+                  Research Status
+              ================================================== */}
+
               {activeSessionLoading && (
                 <ResearchStatus />
               )}
 
+
+              {/* =================================================
+                  Auto Scroll Target
+              ================================================== */}
 
               <div
                 ref={
@@ -773,7 +1222,9 @@ function App() {
         ===================================================== */}
 
         <Composer
-          value={query}
+          value={
+            query
+          }
 
           onChange={
             setQuery
@@ -784,9 +1235,15 @@ function App() {
           }
 
           /*
-           * 一个研究请求运行时，
-           * 暂时禁止并发发送新任务。
+           * 关键：
+           *
+           * Stop 按钮通过这里
+           * 调用 App 中的 stopResearch。
            */
+          onStop={
+            stopResearch
+          }
+
           loading={
             requestInFlight
           }
@@ -794,7 +1251,7 @@ function App() {
 
 
         {/* ====================================================
-            Error
+            Global Error
         ===================================================== */}
 
         {error && (
@@ -807,7 +1264,7 @@ function App() {
 
 
       {/* ======================================================
-          Drawer
+          Research Details Drawer
       ======================================================= */}
 
       <ResearchDrawer

@@ -1267,6 +1267,34 @@ textarea {
   font-weight: 700;
 }
 
+/* ============================================================
+   STOP RESEARCH
+============================================================ */
+
+.stop-button {
+  background: #202123;
+
+  cursor: pointer;
+}
+
+.stop-button:hover {
+  background: #111111;
+}
+
+.stop-icon {
+  width: 10px;
+  height: 10px;
+
+  display: block;
+
+  border-radius: 2px;
+
+  background: #ffffff;
+}
+
+
+
+
 .send-button:hover:not(:disabled) {
   background: #111111;
 }

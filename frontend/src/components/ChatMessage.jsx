@@ -1,10 +1,20 @@
+import {
+  useRef,
+} from "react";
+
 import ReactMarkdown from "react-markdown";
+
+import html2pdf from "html2pdf.js";
 
 
 function ChatMessage({
   message,
   onViewDetails,
 }) {
+  const reportRef =
+    useRef(null);
+
+
   // ============================================================
   // Error
   // ============================================================
@@ -12,11 +22,14 @@ function ChatMessage({
   if (message.role === "error") {
     return (
       <div className="message-row">
+
         <div className="assistant-avatar error-avatar">
           !
         </div>
 
+
         <div className="assistant-content">
+
           <div className="message-author">
             System
           </div>
@@ -24,7 +37,9 @@ function ChatMessage({
           <div className="message-error">
             {message.content}
           </div>
+
         </div>
+
       </div>
     );
   }
@@ -37,16 +52,18 @@ function ChatMessage({
   if (message.role === "user") {
     return (
       <div className="user-message-row">
+
         <div className="user-message">
           {message.content}
         </div>
+
       </div>
     );
   }
 
 
   // ============================================================
-  // Assistant
+  // Assistant Data
   // ============================================================
 
   const result =
@@ -61,6 +78,13 @@ function ChatMessage({
   const retry =
     result.retry || {};
 
+  const tokenUsage =
+    result.token_usage || {};
+
+  const timing =
+    result.timing || {};
+
+
   const score =
     evidence.score == null
       ? null
@@ -71,26 +95,37 @@ function ChatMessage({
 
   return (
     <div className="message-row assistant-message-row">
+
+      {/* ======================================================
+          Avatar
+      ======================================================= */}
+
       <div className="assistant-avatar">
         A
       </div>
 
 
+      {/* ======================================================
+          Content
+      ======================================================= */}
+
       <div className="assistant-content">
-        {/* =====================================================
+
+        {/* ====================================================
             Author
-        ====================================================== */}
+        ===================================================== */}
 
         <div className="message-author">
           Agent Intelligence
         </div>
 
 
-        {/* =====================================================
+        {/* ====================================================
             Meta
-        ====================================================== */}
+        ===================================================== */}
 
         <div className="research-summary-line">
+
           <span>
             {formatLabel(
               result.task_type ||
@@ -98,9 +133,11 @@ function ChatMessage({
             )}
           </span>
 
+
           <span className="summary-dot">
             ·
           </span>
+
 
           <span>
             {formatLabel(
@@ -121,26 +158,68 @@ function ChatMessage({
               </span>
             </>
           )}
+
+
+          {tokenUsage.total_tokens != null && (
+            <>
+              <span className="summary-dot">
+                ·
+              </span>
+
+              <span>
+                {formatCompactTokens(
+                  tokenUsage.total_tokens
+                )}
+                {" "}
+                tokens
+              </span>
+            </>
+          )}
+
+
+          {timing.total_seconds != null && (
+            <>
+              <span className="summary-dot">
+                ·
+              </span>
+
+              <span>
+                {formatDuration(
+                  timing.total_seconds
+                )}
+              </span>
+            </>
+          )}
+
         </div>
 
 
-        {/* =====================================================
+        {/* ====================================================
             Research Report
-        ====================================================== */}
+        ===================================================== */}
 
-        <article className="chat-markdown">
+        <article
+          ref={reportRef}
+          className="chat-markdown"
+        >
           <ReactMarkdown>
             {message.content}
           </ReactMarkdown>
         </article>
 
 
-        {/* =====================================================
+        {/* ====================================================
             Footer
-        ====================================================== */}
+        ===================================================== */}
 
         <div className="answer-footer">
+
+          {/* ==================================================
+              Metrics
+          =================================================== */}
+
           <div className="answer-meta">
+
             {evidence.evaluated && (
               <span
                 className={
@@ -159,36 +238,68 @@ function ChatMessage({
             <span>
               {tracking.unique ?? 0}
               {" "}
-              unique evidence
+              条证据
             </span>
 
 
             <span>
               {result.tool_trace?.length ?? 0}
               {" "}
-              tool executions
+              次工具调用
             </span>
 
 
             <span>
               {retry.count ?? 0}
               {" "}
-              retries
+              次重试
             </span>
+
+
+            {tokenUsage.total_tokens != null && (
+              <span>
+                {formatCompactTokens(
+                  tokenUsage.total_tokens
+                )}
+                {" "}
+                Token
+              </span>
+            )}
+
+
+            {tokenUsage.llm_calls != null && (
+              <span>
+                {tokenUsage.llm_calls}
+                {" "}
+                次模型调用
+              </span>
+            )}
+
+
+            {timing.total_seconds != null && (
+              <span>
+                {formatDuration(
+                  timing.total_seconds
+                )}
+              </span>
+            )}
+
           </div>
 
 
-          {/* ===================================================
+          {/* ==================================================
               Actions
-          ==================================================== */}
+          =================================================== */}
 
           <div className="answer-actions">
+
             <button
               type="button"
               className="download-button"
               onClick={() =>
-                downloadMarkdownReport(
-                  result
+                downloadPdfReport(
+                  result,
+                  reportRef.current
                 )
               }
             >
@@ -196,7 +307,7 @@ function ChatMessage({
                 ↓
               </span>
 
-              Download report
+              Download PDF
             </button>
 
 
@@ -215,22 +326,40 @@ function ChatMessage({
                 ›
               </span>
             </button>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
   );
 }
 
 
 // ============================================================
-// Markdown Report
+// PDF Download
 // ============================================================
 
 
-function buildMarkdownReport(
-  result
+async function downloadPdfReport(
+  result,
+  renderedReport
 ) {
+  if (!renderedReport) {
+    console.error(
+      "Research report DOM not found."
+    );
+
+    return;
+  }
+
+
+  // ==========================================================
+  // Data
+  // ==========================================================
+
   const evidence =
     result.evidence || {};
 
@@ -240,11 +369,18 @@ function buildMarkdownReport(
   const tracking =
     result.evidence_tracking || {};
 
+  const tokenUsage =
+    result.token_usage || {};
+
+  const timing =
+    result.timing || {};
+
   const plan =
     result.plan || [];
 
   const toolTrace =
     result.tool_trace || [];
+
 
   const score =
     evidence.score == null
@@ -263,267 +399,843 @@ function buildMarkdownReport(
 
 
   // ==========================================================
-  // Plan
+  // Root
   // ==========================================================
 
-  const planMarkdown =
-    plan.length > 0
-      ? plan
-          .map(
-            (
-              step,
-              index
-            ) =>
-              `${index + 1}. **${step.action || "research"}** — ${step.description || ""}`
-          )
-          .join("\n")
-      : "No explicit research plan was required.";
+  const pdfRoot =
+    document.createElement(
+      "div"
+    );
+
+
+  pdfRoot.className =
+    "pdf-export-root";
 
 
   // ==========================================================
-  // Tool Trace
+  // Header
   // ==========================================================
 
-  const toolMarkdown =
-    toolTrace.length > 0
-      ? toolTrace
-          .map(
-            (tool) =>
-              `- ${tool.index}. \`${tool.name}\``
-          )
-          .join("\n")
-      : "No structured tool execution.";
+  const header =
+    createSection();
 
 
-  // ==========================================================
-  // Evidence Gaps
-  // ==========================================================
-
-  const evidenceGapMarkdown =
-    evidence.gaps?.length > 0
-      ? evidence.gaps
-          .map(
-            (
-              gap,
-              index
-            ) =>
-              `${index + 1}. ${gap}`
-          )
-          .join("\n")
-      : "No major evidence gaps detected.";
+  const title =
+    document.createElement(
+      "h1"
+    );
 
 
-  // ==========================================================
-  // Retry Queries
-  // ==========================================================
+  title.className =
+    "pdf-main-title";
 
-  const retryQueryMarkdown =
-    retry.queries?.length > 0
-      ? retry.queries
-          .map(
-            (
-              item,
-              index
-            ) => {
-              const lines = [
-                `### Retry Query ${index + 1}`,
-                "",
-                `- Company: ${item.company || "Unknown"}`,
-                `- Query: ${item.query || ""}`,
-              ];
 
-              if (item.gap) {
-                lines.push(
-                  `- Evidence Gap: ${item.gap}`
-                );
-              }
+  title.textContent =
+    "Agent Intelligence Research Report";
 
-              return lines.join(
-                "\n"
-              );
-            }
-          )
-          .join("\n\n")
-      : "No evidence-driven retry was required.";
+
+  const subtitle =
+    document.createElement(
+      "p"
+    );
+
+
+  subtitle.className =
+    "pdf-subtitle";
+
+
+  subtitle.textContent =
+    "Generated by Agent Intelligence Platform";
+
+
+  header.appendChild(
+    title
+  );
+
+
+  header.appendChild(
+    subtitle
+  );
+
+
+  pdfRoot.appendChild(
+    header
+  );
 
 
   // ==========================================================
-  // Date
+  // Query
   // ==========================================================
 
-  const generatedAt =
-    new Date().toLocaleString();
+  pdfRoot.appendChild(
+    createTextSection(
+      "Research Query",
+      result.query ||
+        "Unknown"
+    )
+  );
 
 
   // ==========================================================
-  // Final Markdown
+  // Metadata
   // ==========================================================
 
-  return `# Agent Intelligence Research Report
+  const metadataSection =
+    createSection(
+      "Research Metadata"
+    );
 
-> Generated by Agent Intelligence Platform  
-> Generated at: ${generatedAt}
 
----
+  const metadataGrid =
+    document.createElement(
+      "div"
+    );
 
-## Research Query
 
-${result.query || "Unknown"}
+  metadataGrid.className =
+    "pdf-meta-grid";
 
----
 
-## Research Metadata
+  addMetaItem(
+    metadataGrid,
+    "Task Type",
+    formatLabel(
+      result.task_type ||
+        "Unknown"
+    )
+  );
 
-- **Task Type:** ${formatLabel(result.task_type || "Unknown")}
-- **Complexity:** ${formatLabel(result.complexity || "Unknown")}
-- **Evidence Score:** ${score}
-- **Evidence Status:** ${evidenceStatus}
-- **Retry Count:** ${retry.count ?? 0}
-- **Tool Rounds:** ${result.tool_rounds ?? 0}
 
----
+  addMetaItem(
+    metadataGrid,
+    "Complexity",
+    formatLabel(
+      result.complexity ||
+        "Unknown"
+    )
+  );
 
-## Research Plan
 
-${planMarkdown}
+  addMetaItem(
+    metadataGrid,
+    "Evidence Score",
+    score
+  );
 
----
 
-## Tool Execution
+  addMetaItem(
+    metadataGrid,
+    "Evidence Status",
+    evidenceStatus
+  );
 
-${toolMarkdown}
 
----
+  addMetaItem(
+    metadataGrid,
+    "Retry Count",
+    String(
+      retry.count ?? 0
+    )
+  );
 
-## Research Report
 
-${result.answer || "No research report generated."}
+  addMetaItem(
+    metadataGrid,
+    "Tool Executions",
+    String(
+      toolTrace.length
+    )
+  );
 
----
 
-## Evidence Evaluation
+  addMetaItem(
+    metadataGrid,
+    "Total Tokens",
+    formatNumber(
+      tokenUsage.total_tokens
+    )
+  );
 
-- **Evaluated:** ${evidence.evaluated ? "Yes" : "No"}
-- **Sufficient:** ${
-    evidence.evaluated
-      ? evidence.sufficient
-        ? "Yes"
-        : "No"
-      : "N/A"
+
+  addMetaItem(
+    metadataGrid,
+    "LLM Calls",
+    String(
+      tokenUsage.llm_calls ?? 0
+    )
+  );
+
+
+  addMetaItem(
+    metadataGrid,
+    "Execution Time",
+    formatDuration(
+      timing.total_seconds
+    )
+  );
+
+
+  metadataSection.appendChild(
+    metadataGrid
+  );
+
+
+  pdfRoot.appendChild(
+    metadataSection
+  );
+
+
+  // ==========================================================
+  // Research Plan
+  // ==========================================================
+
+  if (plan.length > 0) {
+    const planSection =
+      createSection(
+        "Research Plan"
+      );
+
+
+    const planList =
+      document.createElement(
+        "ol"
+      );
+
+
+    for (const step of plan) {
+      const item =
+        document.createElement(
+          "li"
+        );
+
+
+      const action =
+        document.createElement(
+          "strong"
+        );
+
+
+      action.textContent =
+        `${step.action || "research"}: `;
+
+
+      item.appendChild(
+        action
+      );
+
+
+      item.appendChild(
+        document.createTextNode(
+          step.description ||
+            ""
+        )
+      );
+
+
+      planList.appendChild(
+        item
+      );
+    }
+
+
+    planSection.appendChild(
+      planList
+    );
+
+
+    pdfRoot.appendChild(
+      planSection
+    );
   }
-- **Score:** ${score}
 
-### Evidence Gaps
 
-${evidenceGapMarkdown}
+  // ==========================================================
+  // Research Report
+  // ==========================================================
 
----
+  const reportSection =
+    createSection(
+      "Research Report"
+    );
 
-## Evidence Tracking
 
-- **Unique Evidence:** ${tracking.unique ?? 0}
-- **New Evidence:** ${tracking.new ?? 0}
-- **Duplicate Evidence:** ${tracking.duplicates ?? 0}
-- **Last New Evidence:** ${tracking.last_new ?? 0}
-- **Last Duplicate Evidence:** ${tracking.last_duplicates ?? 0}
+  const reportClone =
+    renderedReport.cloneNode(
+      true
+    );
 
----
 
-## Evidence-driven Retry
+  reportClone.classList.add(
+    "pdf-report-content"
+  );
 
-${retry.reason
-  ? `**Retry Reason:** ${retry.reason}\n\n`
-  : ""}${retryQueryMarkdown}
 
----
+  reportSection.appendChild(
+    reportClone
+  );
 
-## Notes
 
-This report was generated from the evidence available to the Agent Intelligence Platform.
+  pdfRoot.appendChild(
+    reportSection
+  );
 
-A missing piece of evidence does not necessarily mean that a company or product does not provide the corresponding capability. It only means that the current research evidence was insufficient to support that conclusion.
-`;
+
+  // ==========================================================
+  // Evidence
+  // ==========================================================
+
+  if (evidence.evaluated) {
+    const evidenceSection =
+      createSection(
+        "Evidence Evaluation"
+      );
+
+
+    const summary =
+      document.createElement(
+        "p"
+      );
+
+
+    summary.textContent =
+      `Evidence Score: ${score} | Status: ${evidenceStatus}`;
+
+
+    evidenceSection.appendChild(
+      summary
+    );
+
+
+    if (
+      evidence.gaps &&
+      evidence.gaps.length > 0
+    ) {
+      const gapTitle =
+        document.createElement(
+          "h3"
+        );
+
+
+      gapTitle.textContent =
+        "Evidence Gaps";
+
+
+      const gapList =
+        document.createElement(
+          "ol"
+        );
+
+
+      for (
+        const gap
+        of evidence.gaps
+      ) {
+        const item =
+          document.createElement(
+            "li"
+          );
+
+
+        item.textContent =
+          gap;
+
+
+        gapList.appendChild(
+          item
+        );
+      }
+
+
+      evidenceSection.appendChild(
+        gapTitle
+      );
+
+
+      evidenceSection.appendChild(
+        gapList
+      );
+    }
+
+
+    pdfRoot.appendChild(
+      evidenceSection
+    );
+  }
+
+
+  // ==========================================================
+  // Evidence Tracking
+  // ==========================================================
+
+  const trackingSection =
+    createSection(
+      "Evidence Tracking"
+    );
+
+
+  const trackingGrid =
+    document.createElement(
+      "div"
+    );
+
+
+  trackingGrid.className =
+    "pdf-meta-grid";
+
+
+  addMetaItem(
+    trackingGrid,
+    "Unique Evidence",
+    String(
+      tracking.unique ?? 0
+    )
+  );
+
+
+  addMetaItem(
+    trackingGrid,
+    "New Evidence",
+    String(
+      tracking.new ?? 0
+    )
+  );
+
+
+  addMetaItem(
+    trackingGrid,
+    "Duplicate Evidence",
+    String(
+      tracking.duplicates ?? 0
+    )
+  );
+
+
+  addMetaItem(
+    trackingGrid,
+    "Tool Rounds",
+    String(
+      result.tool_rounds ?? 0
+    )
+  );
+
+
+  trackingSection.appendChild(
+    trackingGrid
+  );
+
+
+  pdfRoot.appendChild(
+    trackingSection
+  );
+
+
+  // ==========================================================
+  // Execution Metrics
+  // ==========================================================
+
+  const metricsSection =
+    createSection(
+      "Execution Metrics"
+    );
+
+
+  const metricsGrid =
+    document.createElement(
+      "div"
+    );
+
+
+  metricsGrid.className =
+    "pdf-meta-grid";
+
+
+  addMetaItem(
+    metricsGrid,
+    "Input Tokens",
+    formatNumber(
+      tokenUsage.input_tokens
+    )
+  );
+
+
+  addMetaItem(
+    metricsGrid,
+    "Output Tokens",
+    formatNumber(
+      tokenUsage.output_tokens
+    )
+  );
+
+
+  addMetaItem(
+    metricsGrid,
+    "Total Tokens",
+    formatNumber(
+      tokenUsage.total_tokens
+    )
+  );
+
+
+  addMetaItem(
+    metricsGrid,
+    "LLM Calls",
+    String(
+      tokenUsage.llm_calls ?? 0
+    )
+  );
+
+
+  addMetaItem(
+    metricsGrid,
+    "Execution Time",
+    formatDuration(
+      timing.total_seconds
+    )
+  );
+
+
+  metricsSection.appendChild(
+    metricsGrid
+  );
+
+
+  pdfRoot.appendChild(
+    metricsSection
+  );
+
+
+  // ==========================================================
+  // Retry
+  // ==========================================================
+
+  if (retry.count > 0) {
+    const retrySection =
+      createSection(
+        "Evidence-driven Retry"
+      );
+
+
+    if (retry.reason) {
+      const reason =
+        document.createElement(
+          "p"
+        );
+
+
+      reason.textContent =
+        retry.reason;
+
+
+      retrySection.appendChild(
+        reason
+      );
+    }
+
+
+    if (
+      retry.queries &&
+      retry.queries.length > 0
+    ) {
+      const retryList =
+        document.createElement(
+          "ol"
+        );
+
+
+      for (
+        const item
+        of retry.queries
+      ) {
+        const li =
+          document.createElement(
+            "li"
+          );
+
+
+        li.textContent =
+          `${
+            item.company ||
+            "Unknown"
+          }: ${
+            item.query ||
+            ""
+          }`;
+
+
+        if (item.gap) {
+          const gap =
+            document.createElement(
+              "div"
+            );
+
+
+          gap.className =
+            "pdf-retry-gap";
+
+
+          gap.textContent =
+            `Gap: ${item.gap}`;
+
+
+          li.appendChild(
+            gap
+          );
+        }
+
+
+        retryList.appendChild(
+          li
+        );
+      }
+
+
+      retrySection.appendChild(
+        retryList
+      );
+    }
+
+
+    pdfRoot.appendChild(
+      retrySection
+    );
+  }
+
+
+  // ==========================================================
+  // Footer
+  // ==========================================================
+
+  const footer =
+    document.createElement(
+      "div"
+    );
+
+
+  footer.className =
+    "pdf-document-footer";
+
+
+  footer.textContent =
+    "Generated by Agent Intelligence Platform";
+
+
+  pdfRoot.appendChild(
+    footer
+  );
+
+
+  // ==========================================================
+  // Mount
+  // ==========================================================
+
+  document.body.appendChild(
+    pdfRoot
+  );
+
+
+  // ==========================================================
+  // PDF Options
+  // ==========================================================
+
+  const options = {
+    margin: [
+      12,
+      12,
+      14,
+      12,
+    ],
+
+    filename:
+      buildPdfFilename(
+        result.query
+      ),
+
+    image: {
+      type: "jpeg",
+      quality: 0.98,
+    },
+
+    html2canvas: {
+      scale: 2,
+
+      useCORS: true,
+
+      logging: false,
+
+      backgroundColor:
+        "#ffffff",
+
+      scrollX: 0,
+
+      scrollY: 0,
+    },
+
+    jsPDF: {
+      unit: "mm",
+
+      format: "a4",
+
+      orientation:
+        "portrait",
+    },
+
+    pagebreak: {
+      mode: [
+        "css",
+        "legacy",
+      ],
+
+      avoid: [
+        "table",
+        "tr",
+        ".pdf-meta-item",
+        ".pdf-section-title",
+      ],
+    },
+  };
+
+
+  try {
+    await html2pdf()
+      .set(
+        options
+      )
+      .from(
+        pdfRoot
+      )
+      .save();
+
+  } catch (error) {
+    console.error(
+      "PDF generation failed:",
+      error
+    );
+
+  } finally {
+    pdfRoot.remove();
+  }
 }
 
 
 // ============================================================
-// Download Markdown
+// PDF Helpers
 // ============================================================
 
 
-function downloadMarkdownReport(
-  result
+function createSection(
+  title = null
 ) {
-  const markdown =
-    buildMarkdownReport(
-      result
-    );
-
-
-  /*
-   * 加 BOM：
-   *
-   * 在 Windows 环境中打开包含中文的 .md 文件时，
-   * 对部分编辑器的 UTF-8 识别更稳定。
-   */
-  const content =
-    "\uFEFF" + markdown;
-
-
-  const blob =
-    new Blob(
-      [
-        content,
-      ],
-      {
-        type:
-          "text/markdown;charset=utf-8",
-      }
-    );
-
-
-  const url =
-    URL.createObjectURL(
-      blob
-    );
-
-
-  const link =
+  const section =
     document.createElement(
-      "a"
+      "section"
     );
 
 
-  link.href =
-    url;
-
-  link.download =
-    buildReportFilename(
-      result.query
-    );
+  section.className =
+    "pdf-section";
 
 
-  document.body.appendChild(
-    link
-  );
-
-  link.click();
-
-  document.body.removeChild(
-    link
-  );
-
-
-  /*
-   * 延迟释放，避免个别浏览器还未读取完 Blob。
-   */
-  window.setTimeout(
-    () => {
-      URL.revokeObjectURL(
-        url
+  if (title) {
+    const heading =
+      document.createElement(
+        "h2"
       );
-    },
-    1000
+
+
+    heading.className =
+      "pdf-section-title";
+
+
+    heading.textContent =
+      title;
+
+
+    section.appendChild(
+      heading
+    );
+  }
+
+
+  return section;
+}
+
+
+function createTextSection(
+  title,
+  text
+) {
+  const section =
+    createSection(
+      title
+    );
+
+
+  const paragraph =
+    document.createElement(
+      "p"
+    );
+
+
+  paragraph.textContent =
+    text;
+
+
+  section.appendChild(
+    paragraph
+  );
+
+
+  return section;
+}
+
+
+function addMetaItem(
+  parent,
+  label,
+  value
+) {
+  const item =
+    document.createElement(
+      "div"
+    );
+
+
+  item.className =
+    "pdf-meta-item";
+
+
+  const labelNode =
+    document.createElement(
+      "span"
+    );
+
+
+  labelNode.textContent =
+    label;
+
+
+  const valueNode =
+    document.createElement(
+      "strong"
+    );
+
+
+  valueNode.textContent =
+    value;
+
+
+  item.appendChild(
+    labelNode
+  );
+
+
+  item.appendChild(
+    valueNode
+  );
+
+
+  parent.appendChild(
+    item
   );
 }
 
@@ -533,7 +1245,7 @@ function downloadMarkdownReport(
 // ============================================================
 
 
-function buildReportFilename(
+function buildPdfFilename(
   query
 ) {
   const fallback =
@@ -541,30 +1253,29 @@ function buildReportFilename(
 
 
   if (!query) {
-    return `${fallback}.md`;
+    return `${fallback}.pdf`;
   }
 
 
-  /*
-   * Windows 文件名禁止：
-   *
-   * < > : " / \\ | ? *
-   */
   const normalized =
     String(query)
       .trim()
+
       .replace(
         /[<>:"/\\|?*]/g,
         ""
       )
+
       .replace(
         /\s+/g,
         "-"
       )
+
       .replace(
         /[。！？,.，、]+$/g,
         ""
       )
+
       .slice(
         0,
         60
@@ -574,7 +1285,7 @@ function buildReportFilename(
   return `${
     normalized ||
     fallback
-  }.md`;
+  }.pdf`;
 }
 
 
@@ -592,6 +1303,91 @@ function formatLabel(
     "_",
     " "
   );
+}
+
+
+function formatNumber(
+  value
+) {
+  return Number(
+    value || 0
+  ).toLocaleString();
+}
+
+
+function formatCompactTokens(
+  value
+) {
+  const tokens =
+    Number(
+      value || 0
+    );
+
+
+  if (
+    tokens >=
+    1000000
+  ) {
+    return `${
+      (
+        tokens /
+        1000000
+      ).toFixed(1)
+    }M`;
+  }
+
+
+  if (
+    tokens >=
+    1000
+  ) {
+    return `${
+      (
+        tokens /
+        1000
+      ).toFixed(1)
+    }K`;
+  }
+
+
+  return String(
+    tokens
+  );
+}
+
+
+function formatDuration(
+  seconds
+) {
+  const value =
+    Number(
+      seconds || 0
+    );
+
+
+  if (value <= 0) {
+    return "0.0秒";
+  }
+
+
+  if (value < 60) {
+    return `${value.toFixed(1)}秒`;
+  }
+
+
+  const minutes =
+    Math.floor(
+      value / 60
+    );
+
+
+  const remainingSeconds =
+    Math.round(
+      value % 60
+    );
+
+
+  return `${minutes}m ${remainingSeconds}s`;
 }
 
 

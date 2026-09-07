@@ -144,6 +144,63 @@ class ToolTraceItem(BaseModel):
 
 
 # ============================================================
+# Token Usage
+# ============================================================
+
+
+class TokenUsageResponse(BaseModel):
+    """
+    单次完整 Research Run 的 LLM Token 用量。
+
+    input_tokens:
+        所有 LLM 调用累计输入 Token。
+
+    output_tokens:
+        所有 LLM 调用累计输出 Token。
+
+    total_tokens:
+        input_tokens + output_tokens。
+
+    llm_calls:
+        本次 Research Run 中实际完成的 LLM 调用次数。
+    """
+
+    input_tokens: int = 0
+
+    output_tokens: int = 0
+
+    total_tokens: int = 0
+
+    llm_calls: int = 0
+
+
+# ============================================================
+# Timing
+# ============================================================
+
+
+class TimingResponse(BaseModel):
+    """
+    单次完整 Research Run 的端到端执行时间。
+
+    包含：
+    Router
+    Planner
+    LLM
+    RAG
+    Tools
+    Evidence Checker
+    Retry
+    Finalize
+    等整个 Graph 执行过程。
+    """
+
+    total_seconds: float = 0.0
+
+    total_ms: float = 0.0
+
+
+# ============================================================
 # Response
 # ============================================================
 
@@ -194,3 +251,11 @@ class ResearchResponse(BaseModel):
     evidence_tracking: (
         EvidenceTrackingResponse
     )
+
+    # ========================================================
+    # Observability
+    # ========================================================
+
+    token_usage: TokenUsageResponse
+
+    timing: TimingResponse
