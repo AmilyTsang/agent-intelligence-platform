@@ -2,29 +2,36 @@ from time import perf_counter
 
 import traceback
 
+
 from fastapi import (
     FastAPI,
     HTTPException,
-)
-
-from fastapi.middleware.cors import (
-    CORSMiddleware,
 )
 
 from fastapi.concurrency import (
     run_in_threadpool,
 )
 
-from langchain_core.messages import (
-    ToolMessage,
+from fastapi.middleware.cors import (
+    CORSMiddleware,
 )
+
 
 from langchain_community.callbacks.manager import (
     get_openai_callback,
 )
 
+from langchain_core.messages import (
+    ToolMessage,
+)
+
+
 from app.agent.graph import (
     research_graph,
+)
+
+from app.api.documents import (
+    router as documents_router,
 )
 
 from app.api.schemas import (
@@ -38,19 +45,35 @@ from app.api.schemas import (
     ToolTraceItem,
 )
 
+from app.documents.service import (
+    initialize_document_library,
+)
+
 
 # ============================================================
-# FastAPI App
+# Initialize Persistent Document Library
 # ============================================================
 
+initialize_document_library()
+
+
+# ============================================================
+# FastAPI
+# ============================================================
 
 app = FastAPI(
-    title="Agent Intelligence Platform API",
-    description=(
-        "基于 LangGraph 的企业 AI 产品研究"
-        "与决策分析智能体 API"
+    title=(
+        "Agent Intelligence Platform"
     ),
-    version="0.1.0",
+
+    version=(
+        "1.0.0"
+    ),
+
+    description=(
+        "Evidence-driven enterprise "
+        "document research agent."
+    ),
 )
 
 
@@ -58,22 +81,13 @@ app = FastAPI(
 # CORS
 # ============================================================
 
-
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-
-    # 如果以后 React 改用其他常见开发端口，
-    # 可以直接继续添加。
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
-
 app.add_middleware(
     CORSMiddleware,
 
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
 
     allow_credentials=True,
 
@@ -88,194 +102,69 @@ app.add_middleware(
 
 
 # ============================================================
-# Helpers
+# Routers
+# ============================================================
+
+app.include_router(
+    documents_router
+)
+
+
+# ============================================================
+# Health
 # ============================================================
 
 
-def normalize_plan(
-    raw_plan,
-) -> list[PlanStepResponse]:
-    """
-    将 AgentState.plan
-    转换成稳定 API Schema。
-    """
-
-    if not isinstance(
-        raw_plan,
-        list,
-    ):
-        return []
-
-    result = []
-
-    for index, item in enumerate(
-        raw_plan,
-        start=1,
-    ):
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        step_id = item.get(
-            "step_id",
-            index,
-        )
-
-        try:
-            step_id = int(
-                step_id
-            )
-
-        except Exception:
-            step_id = index
-
-        action = str(
-            item.get(
-                "action",
-                "research",
-            )
-        ).strip()
-
-        description = str(
-            item.get(
-                "description",
-                "",
-            )
-        ).strip()
-
-        if not description:
-            continue
-
-        result.append(
-            PlanStepResponse(
-                step_id=step_id,
-                action=action,
-                description=description,
-            )
-        )
-
-    return result
+@app.get(
+    "/health"
+)
+async def health():
+    return {
+        "status":
+            "ok"
+    }
 
 
-def normalize_retry_queries(
-    raw_queries,
-) -> list[RetryQueryResponse]:
-    """
-    将 Query Rewriter 输出转换成 API Schema。
-    """
-
-    if not isinstance(
-        raw_queries,
-        list,
-    ):
-        return []
-
-    result = []
-
-    for item in raw_queries:
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        company = str(
-            item.get(
-                "company",
-                "",
-            )
-        ).strip()
-
-        query = str(
-            item.get(
-                "query",
-                "",
-            )
-        ).strip()
-
-        gap = str(
-            item.get(
-                "gap",
-                "",
-            )
-        ).strip()
-
-        if not company:
-            continue
-
-        if not query:
-            continue
-
-        result.append(
-            RetryQueryResponse(
-                company=company,
-                query=query,
-                gap=gap,
-            )
-        )
-
-    return result
+# ============================================================
+# Tool Trace
+# ============================================================
 
 
-def extract_tool_trace(
+def collect_tool_trace(
     messages,
 ) -> list[ToolTraceItem]:
-    """
-    从 LangGraph MessagesState 中
-    获取实际已经执行完成的 Tool。
+    trace: list[
+        ToolTraceItem
+    ] = []
 
-    为什么使用 ToolMessage：
 
-    Agent 可能提出 tool_call，
-    但随后被 Tool Loop Limit 阻止。
-
-    如果直接读取 AIMessage.tool_calls，
-    就会把“提出过”误认为“执行过”。
-
-    ToolMessage 才代表 Tool 已经真正返回结果。
-    """
-
-    if not isinstance(
-        messages,
-        list,
+    for index, message in enumerate(
+        messages or [],
+        start=1,
     ):
-        return []
-
-    trace = []
-
-    index = 1
-
-    for message in messages:
-
         if not isinstance(
             message,
             ToolMessage,
         ):
             continue
 
-        tool_name = getattr(
-            message,
-            "name",
-            None,
-        )
-
-        if not tool_name:
-            tool_name = "unknown"
 
         trace.append(
             ToolTraceItem(
                 index=index,
-                name=str(
-                    tool_name
+
+                name=(
+                    message.name
+                    or "tool"
+                ),
+
+                content=str(
+                    message.content
+                    or ""
                 ),
             )
         )
 
-        index += 1
 
     return trace
 
@@ -288,15 +177,6 @@ def extract_tool_trace(
 def run_research_graph(
     query: str,
 ):
-    """
-    同步执行 LangGraph。
-
-    FastAPI endpoint 会通过
-    run_in_threadpool 调用这个函数，
-    避免长时间 research_graph.invoke()
-    阻塞 FastAPI event loop。
-    """
-
     initial_state = {
         "query":
             query,
@@ -329,53 +209,41 @@ def run_research_graph(
             0,
     }
 
-    return research_graph.invoke(
-        initial_state
+
+    return (
+        research_graph.invoke(
+            initial_state
+        )
     )
 
 
 # ============================================================
-# Research Metrics Runner
+# Metrics
 # ============================================================
 
 
 def run_research_with_metrics(
     query: str,
 ):
-    """
-    执行一次完整 Research，
-    同时统计：
+    started_at = (
+        perf_counter()
+    )
 
-    1. LLM Input Tokens
-    2. LLM Output Tokens
-    3. LLM Total Tokens
-    4. LLM Calls
-    5. End-to-End Execution Time
-
-    当前使用 OpenAI-compatible LangChain Callback。
-
-    如果 DeepSeek 没有把 Token Usage
-    暴露给该 Callback，
-    Token 可能暂时为 0，
-    但 Execution Time 仍然准确。
-    """
-
-    started_at = perf_counter()
 
     with get_openai_callback() as callback:
-
-        result = run_research_graph(
-            query
+        result = (
+            run_research_graph(
+                query
+            )
         )
+
 
     elapsed_seconds = (
         perf_counter()
-        - started_at
+        -
+        started_at
     )
 
-    # ========================================================
-    # Token Usage
-    # ========================================================
 
     token_usage = {
         "input_tokens":
@@ -403,9 +271,6 @@ def run_research_with_metrics(
             ),
     }
 
-    # ========================================================
-    # Timing
-    # ========================================================
 
     timing = {
         "total_seconds":
@@ -422,51 +287,6 @@ def run_research_with_metrics(
             ),
     }
 
-    # ========================================================
-    # Console Metrics
-    # ========================================================
-
-    print(
-        "\n"
-        "========================================"
-    )
-
-    print(
-        "[Research Metrics]"
-    )
-
-    print(
-        "========================================"
-    )
-
-    print(
-        f"Input tokens: "
-        f"{token_usage['input_tokens']}"
-    )
-
-    print(
-        f"Output tokens: "
-        f"{token_usage['output_tokens']}"
-    )
-
-    print(
-        f"Total tokens: "
-        f"{token_usage['total_tokens']}"
-    )
-
-    print(
-        f"LLM calls: "
-        f"{token_usage['llm_calls']}"
-    )
-
-    print(
-        f"Execution time: "
-        f"{timing['total_seconds']} s"
-    )
-
-    print(
-        "========================================"
-    )
 
     return (
         result,
@@ -486,81 +306,257 @@ def build_response(
     token_usage: dict | None = None,
     timing: dict | None = None,
 ) -> ResearchResponse:
-    """
-    将内部 AgentState 转换成
-    对外稳定 ResearchResponse。
+    token_usage = (
+        token_usage
+        or {
+            "input_tokens":
+                0,
 
-    前端以后不应该直接读取 AgentState，
-    而应该始终读取这一层。
-    """
+            "output_tokens":
+                0,
+
+            "total_tokens":
+                0,
+
+            "llm_calls":
+                0,
+        }
+    )
+
+
+    timing = (
+        timing
+        or {
+            "total_seconds":
+                0.0,
+
+            "total_ms":
+                0.0,
+        }
+    )
+
+
+    # ========================================================
+    # Plan
+    # ========================================================
+
+    raw_plan = (
+        state.get(
+            "plan"
+        )
+        or []
+    )
+
+
+    plan: list[
+        PlanStepResponse
+    ] = []
+
+
+    for index, step in enumerate(
+        raw_plan,
+        start=1,
+    ):
+        if isinstance(
+            step,
+            dict,
+        ):
+            plan.append(
+                PlanStepResponse(
+                    step_id=int(
+                        step.get(
+                            "step_id",
+                            index,
+                        )
+                    ),
+
+                    action=str(
+                        step.get(
+                            "action",
+                            "",
+                        )
+                    ),
+
+                    description=str(
+                        step.get(
+                            "description",
+                            "",
+                        )
+                    ),
+                )
+            )
+
+        else:
+            plan.append(
+                PlanStepResponse(
+                    step_id=index,
+
+                    action="research",
+
+                    description=str(
+                        step
+                    ),
+                )
+            )
+
 
     # ========================================================
     # Evidence
     # ========================================================
 
-    evidence_evaluated = (
-        "evidence_sufficient"
-        in state
-    )
-
-    evidence = EvidenceResponse(
-        evaluated=evidence_evaluated,
-
-        sufficient=state.get(
-            "evidence_sufficient"
-        ),
-
-        score=state.get(
+    evidence_score = (
+        state.get(
             "evidence_score"
-        ),
-
-        gaps=state.get(
-            "evidence_gaps",
-            [],
         )
-        or [],
     )
 
-    # ========================================================
-    # Retry
-    # ========================================================
 
-    retry = RetryResponse(
-        count=state.get(
-            "retry_count",
-            0,
-        ),
-
-        queries=normalize_retry_queries(
-            state.get(
-                "retry_queries",
-                [],
-            )
-        ),
-
-        reason=str(
-            state.get(
-                "retry_reason",
-                "",
-            )
-            or ""
-        ),
+    evidence_sufficient = (
+        state.get(
+            "evidence_sufficient"
+        )
     )
+
+
+    evidence_gaps = (
+        state.get(
+            "evidence_gaps"
+        )
+        or []
+    )
+
+
+    evidence_evaluated = (
+        evidence_score
+        is not None
+        or
+        evidence_sufficient
+        is not None
+        or
+        bool(
+            evidence_gaps
+        )
+    )
+
+
+    evidence = (
+        EvidenceResponse(
+            evaluated=(
+                evidence_evaluated
+            ),
+
+            sufficient=(
+                evidence_sufficient
+            ),
+
+            score=(
+                evidence_score
+            ),
+
+            gaps=[
+                str(item)
+                for item
+                in evidence_gaps
+            ],
+        )
+    )
+
+
+    # ========================================================
+    # Retry Queries
+    # ========================================================
+
+    raw_retry_queries = (
+        state.get(
+            "retry_queries"
+        )
+        or []
+    )
+
+
+    retry_queries: list[
+        RetryQueryResponse
+    ] = []
+
+
+    for item in (
+        raw_retry_queries
+    ):
+        if isinstance(
+            item,
+            dict,
+        ):
+            retry_queries.append(
+                RetryQueryResponse(
+                    company=str(
+                        item.get(
+                            "company",
+                            "",
+                        )
+                    ),
+
+                    query=str(
+                        item.get(
+                            "query",
+                            "",
+                        )
+                    ),
+
+                    gap=str(
+                        item.get(
+                            "gap",
+                            "",
+                        )
+                    ),
+                )
+            )
+
+        else:
+            retry_queries.append(
+                RetryQueryResponse(
+                    query=str(
+                        item
+                    )
+                )
+            )
+
+
+    retry = (
+        RetryResponse(
+            count=int(
+                state.get(
+                    "retry_count",
+                    0,
+                )
+                or 0
+            ),
+
+            queries=(
+                retry_queries
+            ),
+
+            reason=str(
+                state.get(
+                    "retry_reason",
+                    "",
+                )
+                or ""
+            ),
+        )
+    )
+
 
     # ========================================================
     # Evidence Tracking
     # ========================================================
 
-    evidence_ids = state.get(
-        "evidence_ids",
-        [],
+    evidence_ids = (
+        state.get(
+            "evidence_ids"
+        )
+        or []
     )
 
-    if not isinstance(
-        evidence_ids,
-        list,
-    ):
-        evidence_ids = []
 
     tracking = (
         EvidenceTrackingResponse(
@@ -568,73 +564,75 @@ def build_response(
                 evidence_ids
             ),
 
-            new=state.get(
-                "new_evidence_count",
-                0,
+            new=int(
+                state.get(
+                    "new_evidence_count",
+                    0,
+                )
+                or 0
             ),
 
-            duplicates=state.get(
-                "duplicate_evidence_count",
-                0,
+            duplicates=int(
+                state.get(
+                    "duplicate_evidence_count",
+                    0,
+                )
+                or 0
             ),
 
-            last_new=state.get(
-                "last_new_evidence_count",
-                0,
+            last_new=int(
+                state.get(
+                    "last_new_evidence_count",
+                    0,
+                )
+                or 0
             ),
 
-            last_duplicates=state.get(
-                "last_duplicate_evidence_count",
-                0,
+            last_duplicates=int(
+                state.get(
+                    "last_duplicate_evidence_count",
+                    0,
+                )
+                or 0
             ),
         )
     )
 
-    # ========================================================
-    # Token Usage Defaults
-    # ========================================================
-
-    if token_usage is None:
-
-        token_usage = {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "llm_calls": 0,
-        }
 
     # ========================================================
-    # Timing Defaults
+    # Tool Trace
     # ========================================================
 
-    if timing is None:
+    tool_trace = (
+        collect_tool_trace(
+            state.get(
+                "messages"
+            )
+            or []
+        )
+    )
 
-        timing = {
-            "total_seconds": 0.0,
-            "total_ms": 0.0,
-        }
 
     # ========================================================
-    # Response
+    # Final Response
     # ========================================================
 
     return ResearchResponse(
         query=query,
 
-        task_type=state.get(
-            "task_type"
-        ),
-
-        complexity=state.get(
-            "complexity"
-        ),
-
-        plan=normalize_plan(
+        task_type=(
             state.get(
-                "plan",
-                [],
+                "task_type"
             )
         ),
+
+        complexity=(
+            state.get(
+                "complexity"
+            )
+        ),
+
+        plan=plan,
 
         answer=str(
             state.get(
@@ -644,241 +642,147 @@ def build_response(
             or ""
         ),
 
-        tool_trace=extract_tool_trace(
+        tool_trace=(
+            tool_trace
+        ),
+
+        tool_rounds=int(
             state.get(
-                "messages",
-                [],
+                "tool_rounds",
+                0,
             )
+            or 0
         ),
 
-        tool_rounds=state.get(
-            "tool_rounds",
-            0,
+        evidence=(
+            evidence
         ),
 
-        evidence=evidence,
+        retry=(
+            retry
+        ),
 
-        retry=retry,
+        evidence_tracking=(
+            tracking
+        ),
 
-        evidence_tracking=tracking,
+        token_usage=(
+            token_usage
+        ),
 
-        # ====================================================
-        # New Observability Metrics
-        # ====================================================
-
-        token_usage=token_usage,
-
-        timing=timing,
+        timing=(
+            timing
+        ),
     )
 
 
 # ============================================================
-# Routes
+# Research API
 # ============================================================
-
-
-@app.get("/")
-def root():
-    """
-    基础 API 信息。
-    """
-
-    return {
-        "name":
-            "Agent Intelligence Platform",
-
-        "status":
-            "running",
-
-        "docs":
-            "/docs",
-
-        "research_endpoint":
-            "/api/research",
-    }
-
-
-@app.get("/api/health")
-def health():
-    """
-    健康检查。
-
-    不执行 LLM / RAG，
-    所以可以快速判断 API Server
-    是否成功启动。
-    """
-
-    return {
-        "status": "ok"
-    }
 
 
 @app.post(
     "/api/research",
-    response_model=ResearchResponse,
+
+    response_model=(
+        ResearchResponse
+    ),
 )
 async def research(
     request: ResearchRequest,
 ):
-    """
-    执行完整 Research Agent。
-
-    Flow:
-
-        HTTP Request
-        ↓
-        FastAPI
-        ↓
-        LangGraph
-        ↓
-        Router
-        ↓
-        RAG / Planner
-        ↓
-        Tool Calling
-        ↓
-        Evidence Checker
-        ↓
-        Evidence-driven Retry
-        ↓
-        Token / Timing Metrics
-        ↓
-        API Response
-    """
-
     query = (
         request.query
         .strip()
     )
 
-    if not query:
 
+    if not query:
         raise HTTPException(
             status_code=400,
+
             detail=(
-                "query cannot be empty"
+                "Query cannot be empty."
             ),
         )
 
-    print(
-        "\n"
-        "========================================"
-    )
-
-    print(
-        "[API] Research Request"
-    )
-
-    print(
-        "========================================"
-    )
-
-    print(
-        f"\nQuery: {query}"
-    )
 
     try:
-
         (
             result,
             token_usage,
             timing,
-        ) = await run_in_threadpool(
-            run_research_with_metrics,
-            query,
+        ) = (
+            await run_in_threadpool(
+                run_research_with_metrics,
+                query,
+            )
         )
+
+
+        response = (
+            build_response(
+                query=query,
+
+                state=result,
+
+                token_usage=(
+                    token_usage
+                ),
+
+                timing=(
+                    timing
+                ),
+            )
+        )
+
+
+        print(
+            "\n"
+            "========================================"
+        )
+
+        print(
+            "[Research Completed]"
+        )
+
+        print(
+            f"Query: {query}"
+        )
+
+        print(
+            "Tokens: "
+            f"{response.token_usage.total_tokens}"
+        )
+
+        print(
+            "LLM calls: "
+            f"{response.token_usage.llm_calls}"
+        )
+
+        print(
+            "Execution time: "
+            f"{response.timing.total_seconds}s"
+        )
+
+        print(
+            "========================================"
+            "\n"
+        )
+
+
+        return response
+
 
     except Exception as exc:
-
-        print(
-            "\n[API] Research failed"
-        )
-
-        print(
-            f"{type(exc).__name__}: "
-            f"{exc}"
-        )
-
         traceback.print_exc()
+
 
         raise HTTPException(
             status_code=500,
+
             detail=(
-                "Research Agent execution failed."
+                "Research execution failed: "
+                + str(exc)
             ),
         ) from exc
-
-    # ========================================================
-    # Build Stable API Response
-    # ========================================================
-
-    response = build_response(
-        query=query,
-
-        # 注意：
-        # 这里必须是 result，
-        # 不是之前未定义的 state。
-        state=result,
-
-        token_usage=token_usage,
-
-        timing=timing,
-    )
-
-    # ========================================================
-    # Console Summary
-    # ========================================================
-
-    print(
-        "\n"
-        "========================================"
-    )
-
-    print(
-        "[API] Research completed"
-    )
-
-    print(
-        "========================================"
-    )
-
-    print(
-        f"task_type="
-        f"{response.task_type}"
-    )
-
-    print(
-        f"complexity="
-        f"{response.complexity}"
-    )
-
-    print(
-        f"retry_count="
-        f"{response.retry.count}"
-    )
-
-    print(
-        f"evidence_score="
-        f"{response.evidence.score}"
-    )
-
-    print(
-        f"total_tokens="
-        f"{response.token_usage.total_tokens}"
-    )
-
-    print(
-        f"llm_calls="
-        f"{response.token_usage.llm_calls}"
-    )
-
-    print(
-        f"execution_time="
-        f"{response.timing.total_seconds}s"
-    )
-
-    print(
-        "========================================"
-    )
-
-    return response

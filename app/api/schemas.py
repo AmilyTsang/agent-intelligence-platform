@@ -7,19 +7,22 @@ from pydantic import (
 
 
 # ============================================================
-# Request
+# Research Request
 # ============================================================
 
 
-class ResearchRequest(BaseModel):
-    """
-    Research Agent API 请求。
-    """
-
+class ResearchRequest(
+    BaseModel
+):
     query: str = Field(
         min_length=1,
+
         max_length=5000,
-        description="用户研究问题",
+
+        description=(
+            "用户研究问题"
+        ),
+
         examples=[
             (
                 "比较 OpenAI 和 Google "
@@ -34,11 +37,9 @@ class ResearchRequest(BaseModel):
 # ============================================================
 
 
-class PlanStepResponse(BaseModel):
-    """
-    Research Plan 单个步骤。
-    """
-
+class PlanStepResponse(
+    BaseModel
+):
     step_id: int
 
     action: str
@@ -51,16 +52,20 @@ class PlanStepResponse(BaseModel):
 # ============================================================
 
 
-class EvidenceResponse(BaseModel):
-    """
-    Evidence Checker 结果。
-    """
-
+class EvidenceResponse(
+    BaseModel
+):
     evaluated: bool = False
 
-    sufficient: bool | None = None
+    sufficient: (
+        bool
+        | None
+    ) = None
 
-    score: float | None = None
+    score: (
+        float
+        | None
+    ) = None
 
     gaps: list[str] = Field(
         default_factory=list
@@ -72,23 +77,19 @@ class EvidenceResponse(BaseModel):
 # ============================================================
 
 
-class RetryQueryResponse(BaseModel):
-    """
-    Query Rewriter 生成的单条 Retry Query。
-    """
+class RetryQueryResponse(
+    BaseModel
+):
+    company: str = ""
 
-    company: str
-
-    query: str
+    query: str = ""
 
     gap: str = ""
 
 
-class RetryResponse(BaseModel):
-    """
-    Evidence-driven Retry 状态。
-    """
-
+class RetryResponse(
+    BaseModel
+):
     count: int = 0
 
     queries: list[
@@ -105,11 +106,9 @@ class RetryResponse(BaseModel):
 # ============================================================
 
 
-class EvidenceTrackingResponse(BaseModel):
-    """
-    Context Engineering Evidence 统计。
-    """
-
+class EvidenceTrackingResponse(
+    BaseModel
+):
     unique: int = 0
 
     new: int = 0
@@ -126,21 +125,14 @@ class EvidenceTrackingResponse(BaseModel):
 # ============================================================
 
 
-class ToolTraceItem(BaseModel):
-    """
-    实际已经执行完成的 Tool。
-
-    注意：
-    这里记录 ToolMessage，
-    而不是 AIMessage 中仅仅提出的 tool_calls。
-
-    因此 Tool Loop Limit 阻止的 Tool Call
-    不会被误认为实际执行。
-    """
-
+class ToolTraceItem(
+    BaseModel
+):
     index: int
 
     name: str
+
+    content: str = ""
 
 
 # ============================================================
@@ -148,23 +140,9 @@ class ToolTraceItem(BaseModel):
 # ============================================================
 
 
-class TokenUsageResponse(BaseModel):
-    """
-    单次完整 Research Run 的 LLM Token 用量。
-
-    input_tokens:
-        所有 LLM 调用累计输入 Token。
-
-    output_tokens:
-        所有 LLM 调用累计输出 Token。
-
-    total_tokens:
-        input_tokens + output_tokens。
-
-    llm_calls:
-        本次 Research Run 中实际完成的 LLM 调用次数。
-    """
-
+class TokenUsageResponse(
+    BaseModel
+):
     input_tokens: int = 0
 
     output_tokens: int = 0
@@ -179,54 +157,44 @@ class TokenUsageResponse(BaseModel):
 # ============================================================
 
 
-class TimingResponse(BaseModel):
-    """
-    单次完整 Research Run 的端到端执行时间。
-
-    包含：
-    Router
-    Planner
-    LLM
-    RAG
-    Tools
-    Evidence Checker
-    Retry
-    Finalize
-    等整个 Graph 执行过程。
-    """
-
+class TimingResponse(
+    BaseModel
+):
     total_seconds: float = 0.0
 
     total_ms: float = 0.0
 
 
 # ============================================================
-# Response
+# Research Response
 # ============================================================
 
 
-class ResearchResponse(BaseModel):
-    """
-    Research Agent 对外稳定响应结构。
-
-    React 前端之后只依赖这一层，
-    不直接依赖 LangGraph AgentState。
-    """
-
+class ResearchResponse(
+    BaseModel
+):
     query: str
 
-    task_type: Literal[
-        "knowledge_query",
-        "competitive_analysis",
-        "industry_analysis",
-        "product_comparison",
-        "other",
-    ] | str | None = None
+    task_type: (
+        Literal[
+            "knowledge_query",
+            "competitive_analysis",
+            "industry_analysis",
+            "product_comparison",
+            "other",
+        ]
+        | str
+        | None
+    ) = None
 
-    complexity: Literal[
-        "simple",
-        "complex",
-    ] | str | None = None
+    complexity: (
+        Literal[
+            "simple",
+            "complex",
+        ]
+        | str
+        | None
+    ) = None
 
     plan: list[
         PlanStepResponse
@@ -252,10 +220,63 @@ class ResearchResponse(BaseModel):
         EvidenceTrackingResponse
     )
 
-    # ========================================================
-    # Observability
-    # ========================================================
-
-    token_usage: TokenUsageResponse
+    token_usage: (
+        TokenUsageResponse
+    )
 
     timing: TimingResponse
+
+
+# ============================================================
+# Documents
+# ============================================================
+
+
+class DocumentResponse(
+    BaseModel
+):
+    document_id: str
+
+    filename: str
+
+    status: Literal[
+        "processing",
+        "ready",
+        "failed",
+    ] | str
+
+    pages: int = 0
+
+    chunks: int = 0
+
+    file_size: int = 0
+
+    error: str = ""
+
+    created_at: (
+        str
+        | None
+    ) = None
+
+    updated_at: (
+        str
+        | None
+    ) = None
+
+# ============================================================
+# Document Delete
+# ============================================================
+
+
+class DocumentDeleteResponse(
+    BaseModel
+):
+    document_id: str
+
+    filename: str
+
+    deleted: bool
+
+    remaining_documents: int = 0
+
+    remaining_chunks: int = 0

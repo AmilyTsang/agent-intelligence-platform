@@ -12,8 +12,21 @@ import ResearchStatus from "./components/ResearchStatus";
 import ResearchDrawer from "./components/ResearchDrawer";
 
 
-const API_URL =
-  "http://127.0.0.1:8000/api/research";
+const API_BASE_URL =
+  "http://127.0.0.1:8000";
+
+
+const RESEARCH_API_URL =
+  `${API_BASE_URL}/api/research`;
+
+
+const DOCUMENTS_API_URL =
+  `${API_BASE_URL}/api/documents`;
+
+
+// ============================================================
+// App
+// ============================================================
 
 
 function App() {
@@ -28,7 +41,7 @@ function App() {
 
 
   // ============================================================
-  // Current Conversation
+  // Messages
   // ============================================================
 
   const [
@@ -37,13 +50,37 @@ function App() {
   ] = useState([]);
 
 
-  // ============================================================
-  // Error
-  // ============================================================
-
   const [
     error,
     setError,
+  ] = useState("");
+
+
+  // ============================================================
+  // Documents
+  // ============================================================
+
+  const [
+    documents,
+    setDocuments,
+  ] = useState([]);
+
+
+  const [
+    uploading,
+    setUploading,
+  ] = useState(false);
+
+
+  const [
+    deletingDocumentId,
+    setDeletingDocumentId,
+  ] = useState(null);
+
+
+  const [
+    documentError,
+    setDocumentError,
   ] = useState("");
 
 
@@ -64,23 +101,8 @@ function App() {
 
 
   // ============================================================
-  // Research Sessions
+  // History
   // ============================================================
-
-  /*
-   * history:
-   *
-   * [
-   *   {
-   *     id: "...",
-   *     title: "...",
-   *     query: "...",
-   *     messages: [...],
-   *     result: {...},
-   *     updatedAt: 123456
-   *   }
-   * ]
-   */
 
   const [
     history,
@@ -94,12 +116,6 @@ function App() {
   ] = useState(null);
 
 
-  /*
-   * 当前正在运行 Research 的 Session ID。
-   *
-   * 当前版本仍然只允许一个 Research
-   * Request 同时运行。
-   */
   const [
     pendingSessionId,
     setPendingSessionId,
@@ -110,43 +126,24 @@ function App() {
   // Refs
   // ============================================================
 
-  /*
-   * React State 是异步更新，
-   * 因此使用 Ref 保留当前 Session ID，
-   * 供 async fetch 回调安全判断。
-   */
   const activeSessionIdRef =
     useRef(null);
 
 
-  /*
-   * 当前 fetch 请求对应的 AbortController。
-   */
   const abortControllerRef =
     useRef(null);
 
 
-  /*
-   * 当前有效 Research Request ID。
-   *
-   * Stop 后会立即设置为 null。
-   *
-   * 因此即使旧请求后端继续完成，
-   * 前端也不会再接受它的结果。
-   */
   const activeRequestIdRef =
     useRef(null);
 
 
-  /*
-   * 自动滚动到底部。
-   */
   const conversationEndRef =
     useRef(null);
 
 
   // ============================================================
-  // Derived State
+  // Derived
   // ============================================================
 
   const requestInFlight =
@@ -165,71 +162,38 @@ function App() {
 
 
   // ============================================================
-  // Suggested Prompts
+  // Suggestions
   // ============================================================
 
   const suggestions =
     useMemo(
       () => [
         (
-          "比较 OpenAI 和 Google "
-          + "在 Agent Tools 设计上的共同点和差异。"
+          "比较 DeepSeek、Google 和 OpenAI "
+          + "在 Agent Tools 设计上的差异。"
         ),
 
         (
-          "分析 Google ADK 在企业 "
-          + "Agent 开发中的核心能力和限制。"
+          "总结上传文档中关于 "
+          + "Agent 架构的共同观点。"
         ),
 
-        (
-          "OpenAI 文档中 Agent 是什么？"
-        ),
+        "Google ADK 是什么？",
       ],
       []
     );
 
 
   // ============================================================
-  // Active Session Helper
+  // Load Documents
   // ============================================================
 
-  function setActiveSessionId(
-    sessionId
-  ) {
-    activeSessionIdRef.current =
-      sessionId;
-
-    setActiveSessionIdState(
-      sessionId
-    );
-  }
-
-
-  // ============================================================
-  // History Sorting
-  // ============================================================
-
-  function sortHistory(
-    sessions
-  ) {
-    return [
-      ...sessions,
-    ].sort(
-      (
-        a,
-        b
-      ) =>
-        (
-          b.updatedAt ||
-          0
-        )
-        -
-        (
-          a.updatedAt ||
-          0
-        )
-    );
-  }
+  useEffect(
+    () => {
+      loadDocuments();
+    },
+    []
+  );
 
 
   // ============================================================
@@ -264,6 +228,411 @@ function App() {
 
 
   // ============================================================
+  // Session Helper
+  // ============================================================
+
+  function setActiveSessionId(
+    sessionId
+  ) {
+    activeSessionIdRef.current =
+      sessionId;
+
+
+    setActiveSessionIdState(
+      sessionId
+    );
+  }
+
+
+  // ============================================================
+  // History Sort
+  // ============================================================
+
+  function sortHistory(
+    sessions
+  ) {
+    return [
+      ...sessions,
+    ].sort(
+      (
+        a,
+        b
+      ) =>
+        (
+          b.updatedAt ||
+          0
+        )
+        -
+        (
+          a.updatedAt ||
+          0
+        )
+    );
+  }
+
+
+  // ============================================================
+  // GET Documents
+  // ============================================================
+
+  async function loadDocuments() {
+    try {
+      setDocumentError(
+        ""
+      );
+
+
+      const response =
+        await fetch(
+          DOCUMENTS_API_URL
+        );
+
+
+      if (!response.ok) {
+        throw new Error(
+          `文档接口返回 ${response.status}`
+        );
+      }
+
+
+      const data =
+        await response.json();
+
+
+      const documentList =
+        Array.isArray(data)
+          ? data
+          : (
+              Array.isArray(
+                data.documents
+              )
+                ? data.documents
+                : []
+            );
+
+
+      setDocuments(
+        documentList
+      );
+
+    } catch (err) {
+      console.warn(
+        "[Documents] Load failed:",
+        err
+      );
+
+
+      setDocuments(
+        []
+      );
+
+
+      setDocumentError(
+        "文档服务尚未连接"
+      );
+    }
+  }
+
+
+  // ============================================================
+  // Upload Documents
+  // ============================================================
+
+  async function uploadDocuments(
+    files
+  ) {
+    if (
+      uploading ||
+      deletingDocumentId ||
+      !files ||
+      files.length === 0
+    ) {
+      return;
+    }
+
+
+    const invalidFile =
+      files.find(
+        (file) =>
+          !file.name
+            .toLowerCase()
+            .endsWith(
+              ".pdf"
+            )
+      );
+
+
+    if (invalidFile) {
+      setDocumentError(
+        "目前只支持 PDF 文件。"
+      );
+
+      return;
+    }
+
+
+    setUploading(
+      true
+    );
+
+
+    setDocumentError(
+      ""
+    );
+
+
+    const failedFiles =
+      [];
+
+
+    try {
+      for (
+        const file
+        of files
+      ) {
+        const formData =
+          new FormData();
+
+
+        formData.append(
+          "file",
+          file
+        );
+
+
+        try {
+          const response =
+            await fetch(
+              DOCUMENTS_API_URL,
+              {
+                method:
+                  "POST",
+
+                body:
+                  formData,
+              }
+            );
+
+
+          if (!response.ok) {
+            let detail =
+              "";
+
+
+            try {
+              const errorData =
+                await response.json();
+
+
+              detail =
+                errorData?.detail ||
+                "";
+
+            } catch {
+              // Ignore.
+            }
+
+
+            throw new Error(
+              detail ||
+              `上传失败：${response.status}`
+            );
+          }
+
+        } catch (err) {
+          console.error(
+            "[Documents] Upload failed:",
+            file.name,
+            err
+          );
+
+
+          failedFiles.push(
+            file.name
+          );
+        }
+      }
+
+
+      await loadDocuments();
+
+
+      if (
+        failedFiles.length > 0
+      ) {
+        setDocumentError(
+          (
+            "以下文件上传失败："
+            + failedFiles.join(
+              "、"
+            )
+          )
+        );
+      }
+
+    } finally {
+      setUploading(
+        false
+      );
+    }
+  }
+
+
+  // ============================================================
+  // Delete Document
+  // ============================================================
+
+  async function deleteDocument(
+    document
+  ) {
+    const documentId =
+      document.document_id ||
+      document.id;
+
+
+    console.log(
+      "[Documents] Delete requested:",
+      document
+    );
+
+
+    if (!documentId) {
+      setDocumentError(
+        "无法识别文档 ID。"
+      );
+
+      return;
+    }
+
+
+    if (requestInFlight) {
+      setDocumentError(
+        "研究运行期间不能删除文档，请先停止当前研究。"
+      );
+
+      return;
+    }
+
+
+    if (uploading) {
+      setDocumentError(
+        "文档上传期间不能删除文档。"
+      );
+
+      return;
+    }
+
+
+    if (deletingDocumentId) {
+      return;
+    }
+
+
+    setDeletingDocumentId(
+      documentId
+    );
+
+
+    setDocumentError(
+      ""
+    );
+
+
+    try {
+      const url =
+        (
+          `${DOCUMENTS_API_URL}/`
+          + encodeURIComponent(
+              documentId
+            )
+        );
+
+
+      console.log(
+        "[Documents] Sending DELETE:",
+        url
+      );
+
+
+      const response =
+        await fetch(
+          url,
+          {
+            method:
+              "DELETE",
+          }
+        );
+
+
+      console.log(
+        "[Documents] DELETE response:",
+        response.status
+      );
+
+
+      if (!response.ok) {
+        let detail =
+          "";
+
+
+        try {
+          const data =
+            await response.json();
+
+
+          detail =
+            data?.detail ||
+            "";
+
+        } catch {
+          // Ignore.
+        }
+
+
+        throw new Error(
+          detail ||
+          `删除失败：${response.status}`
+        );
+      }
+
+
+      const result =
+        await response.json();
+
+
+      console.log(
+        "[Documents] Delete success:",
+        result
+      );
+
+
+      /*
+       * 删除后以服务器状态为准。
+       */
+      await loadDocuments();
+
+    } catch (err) {
+      console.error(
+        "[Documents] Delete failed:",
+        err
+      );
+
+
+      setDocumentError(
+        err instanceof Error
+          ? err.message
+          : "删除文档失败。"
+      );
+
+    } finally {
+      setDeletingDocumentId(
+        null
+      );
+    }
+  }
+
+
+  // ============================================================
   // Run Research
   // ============================================================
 
@@ -277,29 +646,15 @@ function App() {
       ).trim();
 
 
-    // ==========================================================
-    // Validation
-    // ==========================================================
-
     if (!finalQuery) {
       return;
     }
 
 
-    /*
-     * 当前版本：
-     *
-     * 一个 Research Request
-     * 运行期间不再发第二个 Request。
-     */
     if (requestInFlight) {
       return;
     }
 
-
-    // ==========================================================
-    // User Message
-    // ==========================================================
 
     const userMessage = {
       id:
@@ -313,20 +668,10 @@ function App() {
     };
 
 
-    // ==========================================================
-    // Resolve Session
-    // ==========================================================
-
     let sessionId =
       activeSessionIdRef.current;
 
 
-    /*
-     * 当前没有 Session：
-     *
-     * 说明用户位于 New Research 页面。
-     * 第一次发送问题时创建新 Session。
-     */
     if (!sessionId) {
       sessionId =
         crypto.randomUUID();
@@ -368,17 +713,11 @@ function App() {
             ]
           ).slice(
             0,
-            20
+            30
           )
       );
-    }
 
-    /*
-     * 当前已经存在 Session：
-     *
-     * 将新问题追加到当前 Session。
-     */
-    else {
+    } else {
       setHistory(
         (current) =>
           sortHistory(
@@ -414,10 +753,6 @@ function App() {
     }
 
 
-    // ==========================================================
-    // Current UI
-    // ==========================================================
-
     setMessages(
       (current) => [
         ...current,
@@ -446,18 +781,6 @@ function App() {
     );
 
 
-    // ==========================================================
-    // Create Request ID
-    // ==========================================================
-
-    /*
-     * 每次 Research 使用唯一 Request ID。
-     *
-     * Stop 后 activeRequestIdRef 会被置空。
-     *
-     * 因此即使旧请求最终完成，
-     * 它也无法把结果写回 UI。
-     */
     const requestId =
       crypto.randomUUID();
 
@@ -465,10 +788,6 @@ function App() {
     activeRequestIdRef.current =
       requestId;
 
-
-    // ==========================================================
-    // Create AbortController
-    // ==========================================================
 
     const controller =
       new AbortController();
@@ -478,14 +797,10 @@ function App() {
       controller;
 
 
-    // ==========================================================
-    // API
-    // ==========================================================
-
     try {
       const response =
         await fetch(
-          API_URL,
+          RESEARCH_API_URL,
           {
             method:
               "POST",
@@ -503,23 +818,15 @@ function App() {
                 }
               ),
 
-            /*
-             * Stop 按钮将调用：
-             *
-             * controller.abort()
-             */
             signal:
               controller.signal,
           }
         );
 
 
-      // ========================================================
-      // HTTP Error
-      // ========================================================
-
       if (!response.ok) {
-        let detail = "";
+        let detail =
+          "";
 
 
         try {
@@ -532,9 +839,7 @@ function App() {
             "";
 
         } catch {
-          /*
-           * 后端返回非 JSON Error 时忽略。
-           */
+          // Ignore.
         }
 
 
@@ -548,25 +853,10 @@ function App() {
       }
 
 
-      // ========================================================
-      // Response JSON
-      // ========================================================
-
       const data =
         await response.json();
 
 
-      // ========================================================
-      // Cancelled Request Guard
-      // ========================================================
-
-      /*
-       * 如果用户已经点击 Stop，
-       * activeRequestIdRef 已经变成 null。
-       *
-       * 即使后端仍然完成请求，
-       * 这里也直接丢弃结果。
-       */
       if (
         activeRequestIdRef.current !==
         requestId
@@ -579,10 +869,6 @@ function App() {
       }
 
 
-      // ========================================================
-      // Assistant Message
-      // ========================================================
-
       const assistantMessage = {
         id:
           crypto.randomUUID(),
@@ -592,34 +878,12 @@ function App() {
 
         content:
           data.answer ||
-          (
-            "No research report "
-            + "generated."
-          ),
+          "没有生成研究报告。",
 
-        /*
-         * result 内包含：
-         *
-         * task_type
-         * complexity
-         * plan
-         * evidence
-         * retry
-         * evidence_tracking
-         * token_usage
-         * timing
-         *
-         * ChatMessage 和 ResearchDrawer
-         * 都直接读取这里。
-         */
         result:
           data,
       };
 
-
-      // ========================================================
-      // Save Result into History Session
-      // ========================================================
 
       setHistory(
         (current) =>
@@ -658,16 +922,6 @@ function App() {
       );
 
 
-      // ========================================================
-      // Update Current Screen
-      // ========================================================
-
-      /*
-       * 用户可能在等待期间切换到了其他 Session。
-       *
-       * 只有当前仍然正在查看这个 Session，
-       * 才把结果显示在当前页面。
-       */
       if (
         activeSessionIdRef.current ===
         sessionId
@@ -686,16 +940,6 @@ function App() {
       }
 
     } catch (err) {
-      // ========================================================
-      // User Cancelled
-      // ========================================================
-
-      /*
-       * 不依赖 DOMException 类型，
-       * 直接判断 controller.signal.aborted。
-       *
-       * 这种方式在不同浏览器下更稳定。
-       */
       if (
         controller.signal.aborted
       ) {
@@ -707,10 +951,6 @@ function App() {
       }
 
 
-      // ========================================================
-      // Real Error
-      // ========================================================
-
       console.error(
         err
       );
@@ -719,10 +959,7 @@ function App() {
       const errorMessage =
         err instanceof Error
           ? err.message
-          : (
-              "Research request "
-              + "failed."
-            );
+          : "研究请求失败。";
 
 
       const systemMessage = {
@@ -736,10 +973,6 @@ function App() {
           errorMessage,
       };
 
-
-      // ========================================================
-      // Save Error into Session
-      // ========================================================
 
       setHistory(
         (current) =>
@@ -775,10 +1008,6 @@ function App() {
       );
 
 
-      // ========================================================
-      // Update Current UI Error
-      // ========================================================
-
       if (
         activeSessionIdRef.current ===
         sessionId
@@ -797,19 +1026,6 @@ function App() {
       }
 
     } finally {
-      // ========================================================
-      // Request Cleanup
-      // ========================================================
-
-      /*
-       * 非常重要：
-       *
-       * 如果用户已经 Stop，
-       * activeRequestIdRef.current 已经不是 requestId。
-       *
-       * 因此旧请求 finally
-       * 不允许修改新的 UI 状态。
-       */
       if (
         activeRequestIdRef.current ===
         requestId
@@ -824,11 +1040,6 @@ function App() {
       }
 
 
-      /*
-       * 只有这个 controller
-       * 仍然是当前 controller，
-       * 才清除 Ref。
-       */
       if (
         abortControllerRef.current ===
         controller
@@ -854,44 +1065,15 @@ function App() {
       abortControllerRef.current;
 
 
-    // ==========================================================
-    // 1. Invalidate Current Request
-    // ==========================================================
-
-    /*
-     * 第一时间让当前 Request 失效。
-     *
-     * 之后即使服务器仍然返回结果，
-     * runResearch() 中的 requestId Guard
-     * 会直接把结果丢弃。
-     */
     activeRequestIdRef.current =
       null;
 
-
-    // ==========================================================
-    // 2. Abort Browser Fetch
-    // ==========================================================
 
     if (controller) {
       controller.abort();
     }
 
 
-    // ==========================================================
-    // 3. Immediately Restore UI
-    // ==========================================================
-
-    /*
-     * ResearchStatus 是否显示，
-     * 取决于 pendingSessionId。
-     *
-     * 清空以后：
-     *
-     * Researching 立即消失
-     * Stop 按钮立即恢复成 Send
-     * 输入框立即恢复
-     */
     setPendingSessionId(
       null
     );
@@ -908,7 +1090,7 @@ function App() {
 
 
   // ============================================================
-  // Research Drawer
+  // Drawer
   // ============================================================
 
   function openResearchDetails(
@@ -937,11 +1119,6 @@ function App() {
   // ============================================================
 
   function startNewResearch() {
-    /*
-     * 不删除历史 Session。
-     *
-     * 只是切换到一个新的空白研究页面。
-     */
     setActiveSessionId(
       null
     );
@@ -974,7 +1151,7 @@ function App() {
 
 
   // ============================================================
-  // Switch History Session
+  // Select History
   // ============================================================
 
   function selectHistoryItem(
@@ -1007,10 +1184,6 @@ function App() {
     );
 
 
-    /*
-     * 如果此时 Drawer 正在打开，
-     * 切换 Session 时自动关闭。
-     */
     setDrawerOpen(
       false
     );
@@ -1024,17 +1197,41 @@ function App() {
   return (
     <div className="app-shell">
 
-      {/* ======================================================
-          Sidebar
-      ======================================================= */}
-
       <Sidebar
+        documents={
+          documents
+        }
+
+        uploading={
+          uploading
+        }
+
+        deletingDocumentId={
+          deletingDocumentId
+        }
+
+        documentError={
+          documentError
+        }
+
         history={
           history
         }
 
         activeSessionId={
           activeSessionId
+        }
+
+        requestInFlight={
+          requestInFlight
+        }
+
+        onUploadDocuments={
+          uploadDocuments
+        }
+
+        onDeleteDocument={
+          deleteDocument
         }
 
         onNewResearch={
@@ -1047,15 +1244,7 @@ function App() {
       />
 
 
-      {/* ======================================================
-          Main
-      ======================================================= */}
-
       <main className="main-panel">
-
-        {/* ====================================================
-            Header
-        ===================================================== */}
 
         <header className="main-header">
 
@@ -1066,7 +1255,7 @@ function App() {
             </strong>
 
             <span>
-              Research Agent
+              文档研究智能体
             </span>
 
           </div>
@@ -1074,24 +1263,23 @@ function App() {
 
           <div className="system-ready">
 
-            <span
-              className="ready-dot"
-            />
+            <span className="ready-dot" />
+
 
             <span>
               {requestInFlight
-                ? "Researching"
-                : "Ready"}
+                ? "研究中"
+                : (
+                    deletingDocumentId
+                      ? "更新文档库中"
+                      : "就绪"
+                  )}
             </span>
 
           </div>
 
         </header>
 
-
-        {/* ====================================================
-            Conversation
-        ===================================================== */}
 
         <section
           className={
@@ -1104,10 +1292,6 @@ function App() {
           }
         >
 
-          {/* ==================================================
-              Home / Empty State
-          =================================================== */}
-
           {!hasMessages && (
             <div className="welcome">
 
@@ -1117,17 +1301,43 @@ function App() {
 
 
               <h1>
-                What would you like
-                to research?
+                想研究什么？
               </h1>
 
 
               <p>
-                Research AI products,
-                technical architectures
-                and competitive differences
-                using evidence-driven analysis.
+                基于已上传的企业文档进行检索、
+                对比、证据分析和研究总结。
               </p>
+
+
+              <div className="welcome-document-status">
+
+                {documents.length > 0 ? (
+                  <>
+                    <strong>
+                      {documents.length}
+                      {" "}
+                      个文档已连接
+                    </strong>
+
+                    <span>
+                      新建研究会自动使用当前文档库
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <strong>
+                      尚未上传文档
+                    </strong>
+
+                    <span>
+                      请先从左侧文档库上传 PDF
+                    </span>
+                  </>
+                )}
+
+              </div>
 
 
               <div className="suggestions">
@@ -1141,9 +1351,7 @@ function App() {
 
                       type="button"
 
-                      className={
-                        "suggestion-card"
-                      }
+                      className="suggestion-card"
 
                       disabled={
                         requestInFlight
@@ -1165,10 +1373,6 @@ function App() {
             </div>
           )}
 
-
-          {/* ==================================================
-              Messages
-          =================================================== */}
 
           {hasMessages && (
             <div className="message-list">
@@ -1192,18 +1396,10 @@ function App() {
               )}
 
 
-              {/* =================================================
-                  Research Status
-              ================================================== */}
-
               {activeSessionLoading && (
                 <ResearchStatus />
               )}
 
-
-              {/* =================================================
-                  Auto Scroll Target
-              ================================================== */}
 
               <div
                 ref={
@@ -1216,10 +1412,6 @@ function App() {
 
         </section>
 
-
-        {/* ====================================================
-            Composer
-        ===================================================== */}
 
         <Composer
           value={
@@ -1234,12 +1426,6 @@ function App() {
             runResearch()
           }
 
-          /*
-           * 关键：
-           *
-           * Stop 按钮通过这里
-           * 调用 App 中的 stopResearch。
-           */
           onStop={
             stopResearch
           }
@@ -1250,10 +1436,6 @@ function App() {
         />
 
 
-        {/* ====================================================
-            Global Error
-        ===================================================== */}
-
         {error && (
           <div className="global-error">
             {error}
@@ -1262,10 +1444,6 @@ function App() {
 
       </main>
 
-
-      {/* ======================================================
-          Research Details Drawer
-      ======================================================= */}
 
       <ResearchDrawer
         open={
