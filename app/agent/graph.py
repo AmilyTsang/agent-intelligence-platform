@@ -1,3 +1,16 @@
+from app.agent.nodes.evidence_router import (
+    route_after_evidence_check,
+)
+
+from app.agent.nodes.query_rewriter import (
+    query_rewriter_node,
+)
+
+from app.agent.nodes.prepare_retry import (
+    prepare_retry_node,
+)
+
+
 from langgraph.graph import (
     StateGraph,
     START,
@@ -149,6 +162,16 @@ def build_graph():
     workflow.add_node(
         "router",
         router_node,
+    )
+
+    workflow.add_node(
+        "query_rewriter",
+        query_rewriter_node,
+    )
+
+    workflow.add_node(
+        "prepare_retry",
+        prepare_retry_node,
     )
 
     workflow.add_node(
@@ -308,11 +331,25 @@ def build_graph():
     # evidence_gaps
     #
     # 暂时不触发 Retry。
-    workflow.add_edge(
+    workflow.add_conditional_edges(
         "evidence_checker",
-        END,
+        route_after_evidence_check,
+        {
+            "end": END,
+            "retry": "query_rewriter",
+        },
     )
 
+
+    workflow.add_edge(
+        "query_rewriter",
+        "prepare_retry",
+    )
+
+    workflow.add_edge(
+        "prepare_retry",
+        "agent_executor",
+    )
     # ========================================================
     # Compile
     # ========================================================

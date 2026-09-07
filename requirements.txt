@@ -12,3 +12,6 @@ python-dotenv
 faiss-cpu
 sentence-transformers
 pymupdf
+
+fastapi
+uvicorn[standard]

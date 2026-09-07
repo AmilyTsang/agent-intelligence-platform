@@ -12,72 +12,84 @@ TaskType = Literal[
     "other",
 ]
 
-
 ComplexityType = Literal[
     "simple",
     "complex",
 ]
 
 
-class AgentState(MessagesState, total=False):
-    """
-    Agent Intelligence Platform 全局状态。
-
-    MessagesState 自带：
-        messages
-
-    自定义字段：
-        query:
-            用户原始问题
-
-        task_type:
-            Router 判断的任务类型
-
-        complexity:
-            simple / complex
-
-        plan:
-            Planner 生成的研究计划
-
-        documents:
-            RAG 检索得到的文档
-
-        answer:
-            最终回答
-
-        tool_rounds:
-            已产生的 Tool Calling 轮数
-
-            注意：
-            同一个 AIMessage 中即使包含多个 Tool Call，
-            也只算 1 个 Tool Round。
-
-            例如：
-
-            company_search(OpenAI)
-            company_search(Google)
-
-            同时出现时：
-
-            tool_rounds += 1
-
-            而不是 += 2
-    """
+class AgentState(
+    MessagesState,
+    total=False,
+):
+    # ========================================================
+    # User Request
+    # ========================================================
 
     query: str
 
-    task_type: TaskType
+    # ========================================================
+    # Router
+    # ========================================================
 
+    task_type: TaskType
     complexity: ComplexityType
+
+    # ========================================================
+    # Planner
+    # ========================================================
 
     plan: list[dict]
 
+    # ========================================================
+    # RAG
+    # ========================================================
+
     documents: list[Document]
+
+    # ========================================================
+    # Final Answer
+    # ========================================================
 
     answer: str
 
+    # ========================================================
+    # Tool Loop
+    # ========================================================
+
     tool_rounds: int
-    
+
+    # ========================================================
+    # Evidence Checker
+    # ========================================================
+
     evidence_sufficient: bool
     evidence_score: float
     evidence_gaps: list[str]
+
+    # ========================================================
+    # Evidence-driven Retry
+    # ========================================================
+
+    retry_count: int
+    retry_queries: list[dict]
+    retry_reason: str
+
+    # ========================================================
+    # Evidence Tracking
+    # ========================================================
+
+    # 整个 Research Run 已经见过的唯一 Evidence ID
+    evidence_ids: list[str]
+
+    # 整个 Research Run 累计新增 Evidence 数
+    new_evidence_count: int
+
+    # 整个 Research Run 累计重复 Evidence 数
+    duplicate_evidence_count: int
+
+    # 最近一次 ToolNode 执行新增 Evidence 数
+    last_new_evidence_count: int
+
+    # 最近一次 ToolNode 执行重复 Evidence 数
+    last_duplicate_evidence_count: int

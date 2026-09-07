@@ -1,0 +1,135 @@
+[
+  {
+    "id": "simple_001",
+    "query": "OpenAI 文档中 Agent 是什么？",
+    "expected_task_type": "knowledge_query",
+    "expected_complexity": "simple",
+    "expected_tools": [],
+    "expect_evidence_checker": false,
+    "expect_retry": false
+  },
+  {
+    "id": "simple_002",
+    "query": "OpenAI 文档中工具有哪些主要类型？",
+    "expected_task_type": "knowledge_query",
+    "expected_complexity": "simple",
+    "expected_tools": [],
+    "expect_evidence_checker": false,
+    "expect_retry": false
+  },
+  {
+    "id": "simple_003",
+    "query": "Google ADK 是什么？",
+    "expected_task_type": "knowledge_query",
+    "expected_complexity": "simple",
+    "expected_tools": [],
+    "expect_evidence_checker": false,
+    "expect_retry": false
+  },
+  {
+    "id": "complex_001",
+    "query": "比较 OpenAI 和 Google 在 Agent Tools 设计上的共同点和差异。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search",
+      "extract_company_info"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  },
+  {
+    "id": "complex_002",
+    "query": "比较 OpenAI 和 Google 在 Agent 权限控制设计上的差异。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search",
+      "extract_company_info"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  },
+  {
+    "id": "complex_003",
+    "query": "比较 OpenAI 和 Google Agent 在错误处理和人工接管机制上的设计。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search",
+      "extract_company_info"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  },
+  {
+    "id": "complex_004",
+    "query": "比较 OpenAI 和 Google 在多 Agent 协作方式上的设计差异。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search",
+      "extract_company_info"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  },
+  {
+    "id": "retry_001",
+    "query": "比较 OpenAI 和 Google Agent Tools 在调用延迟、吞吐量和成本方面的具体量化差异。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": true,
+    "expected_final_evidence_sufficient": false
+  },
+  {
+    "id": "retry_002",
+    "query": "比较 OpenAI 和 Google Agent Tools 的 P50、P95 延迟、QPS 和具体 API 价格。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": true,
+    "expected_final_evidence_sufficient": false
+  },
+  {
+    "id": "retry_003",
+    "query": "比较 OpenAI 和 Google Agent 在权限检查耗时、错误恢复平均耗时和 guardrail 误报率方面的量化差异。",
+    "expected_task_type": "product_comparison",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": true,
+    "expected_final_evidence_sufficient": false
+  },
+  {
+    "id": "analysis_001",
+    "query": "分析 OpenAI Agent 架构在企业应用中的主要设计特点。",
+    "expected_task_type": "industry_analysis",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  },
+  {
+    "id": "analysis_002",
+    "query": "分析 Google ADK 在企业 Agent 开发中的核心能力和限制。",
+    "expected_task_type": "industry_analysis",
+    "expected_complexity": "complex",
+    "expected_tools": [
+      "company_search"
+    ],
+    "expect_evidence_checker": true,
+    "expect_retry": false
+  }
+]
